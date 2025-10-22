@@ -1,0 +1,61 @@
+import React from 'react'
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import Dashboard from './pages/Dashboard'
+import HealthLog from './pages/HealthLog'
+import { useCatStore } from './store/catStore'
+
+function App() {
+    const { selectedCat, selectCat, cats } = useCatStore();
+
+    return (
+        <BrowserRouter>
+        <div className="min-h-screen bg-gray-50">
+            {/* 네비게이션 바 */}
+            <nav className="bg-white shadow-sm border-b">
+            <div className="max-w-6xl mx-auto px-8 py-4">
+                <div className="flex items-center justify-between">
+                <Link to="/" className="text-2xl font-bold text-gray-800 hover:text-blue-600 transition">
+                    🐱 고양이 건강 관리
+                </Link>
+                
+                {/* 고양이 선택 드롭다운 */}
+                {cats.length > 0 && (
+                    <div className="flex items-center gap-4">
+                    <select
+                        value={selectedCat?.id || ''}
+                        onChange={(e) => selectCat(e.target.value)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">고양이 선택</option>
+                        {cats.map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                        </option>
+                        ))}
+                    </select>
+                    
+                    {selectedCat && (
+                        <Link
+                        to="/health-log"
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                        >
+                        건강 기록
+                        </Link>
+                    )}
+                    </div>
+                )}
+                </div>
+            </div>
+            </nav>
+
+            {/* 페이지 내용 */}
+            <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/health-log" element={<HealthLog />} />
+            </Routes>
+        </div>
+        </BrowserRouter>
+    )
+}
+
+export default App
