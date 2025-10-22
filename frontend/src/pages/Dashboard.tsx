@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useCatStore } from '../store/catStore';
+import { useCatStore } from '../store/catStore.ts';
 import { Cat } from '../types';
 import { useNavigate } from 'react-router-dom';
 
