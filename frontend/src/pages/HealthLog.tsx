@@ -1,315 +1,352 @@
-import React, { useEffect, useState } from 'react';
-import { useHealthStore } from '../store/healthStore';
-import { useCatStore } from '../store/catStore';
-import { HealthLog as HealthLogType } from '../types';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useCatStore } from '../store/catStore';
+import { useHealthStore } from '../store/healthStore';
 
 function HealthLog() {
-    const navigate = useNavigate();
-    const { selectedCat } = useCatStore();
-    const { healthLogs, loadHealthLogs, addHealthLog } = useHealthStore();
-    const [showForm, setShowForm] = useState(false);
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const { selectedCat } = useCatStore();
+  const { addHealthLog, getRecentLogs } = useHealthStore();
+
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    foodAmount: '',
+    waterAmount: '',
+    litterCount: '',
+    activityLevel: 'normal' as 'active' | 'normal' | 'lazy',
+    mood: 'normal' as 'happy' | 'normal' | 'sad' | 'angry',
+    notes: '',
+  });
+
+  console.log('🏥 HealthLog page, selectedCat:', selectedCat?.name);
+
+  if (!selectedCat) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-4">🐱</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">
+            {t('healthLog.selectCatFirst')}
+          </h2>
+          <p className="text-gray-600 mb-6">
+            {t('healthLog.selectCatDescription')}
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+          >
+            {t('healthLog.backButton')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const catLogs = getRecentLogs(selectedCat.id, 30);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     
-    const [formData, setFormData] = useState({
-        date: new Date().toISOString().split('T')[0],
-        foodAmount: '',
-        waterAmount: '',
-        litterCount: '2',
-        activityLevel: 'normal' as 'active' | 'normal' | 'lazy',
-        mood: 'normal' as 'happy' | 'normal' | 'sad' | 'angry',
-        notes: '',
-    });
-
-    useEffect(() => {
-        if (selectedCat) {
-        loadHealthLogs(selectedCat.id);
-        }
-    }, [selectedCat, loadHealthLogs]);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        if (!selectedCat) return;
-
-        const newLog: HealthLogType = {
-        id: Date.now().toString(),
+    console.log('📝 Submitting form data:', formData);
+    
+    try {
+      addHealthLog({
+        id: crypto.randomUUID(),
         catId: selectedCat.id,
         date: formData.date,
-        foodAmount: parseFloat(formData.foodAmount),
-        waterAmount: parseFloat(formData.waterAmount),
-        litterCount: parseInt(formData.litterCount),
+        foodAmount: Number(formData.foodAmount),
+        waterAmount: Number(formData.waterAmount),
+        litterCount: Number(formData.litterCount),
         activityLevel: formData.activityLevel,
         mood: formData.mood,
         notes: formData.notes,
-        };
-
-        addHealthLog(newLog);
-        setShowForm(false);
-        
-        // 폼 초기화
-        setFormData({
+      });
+      
+      console.log('✅ Health log saved successfully!');
+      
+      // 폼 닫기
+      setShowForm(false);
+      
+      // 폼 초기화
+      setFormData({
         date: new Date().toISOString().split('T')[0],
         foodAmount: '',
         waterAmount: '',
-        litterCount: '2',
+        litterCount: '',
         activityLevel: 'normal',
         mood: 'normal',
         notes: '',
-        });
-    };
-
-    if (!selectedCat) {
-        return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-            <div className="text-center">
-            <div className="text-6xl mb-4">🐱</div>
-            <p className="text-xl text-gray-600">고양이를 먼저 선택해주세요</p>
-            </div>
-        </div>
-        );
+      });
+      
+      console.log('✅ Form closed and reset');
+    } catch (error) {
+      console.error('❌ Error saving health log:', error);
+      alert('저장 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
     }
+  };
 
-    return (
-        <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-4xl mx-auto">
-        {/* 헤더 */}
-        <div className="mb-8">
-            <button
+  const activityOptions = [
+    { value: 'active', label: t('healthLog.active') },
+    { value: 'normal', label: t('healthLog.normal') },
+    { value: 'lazy', label: t('healthLog.lazy') },
+  ];
+
+  const moodEmojis: Record<'happy' | 'normal' | 'sad' | 'angry', string> = {
+    happy: '😊',
+    normal: '😐',
+    sad: '😢',
+    angry: '😠',
+  };
+
+  const moodOptions: Array<{ value: 'happy' | 'normal' | 'sad' | 'angry'; label: string; emoji: string }> = [
+    { value: 'happy', label: t('healthLog.moodHappy'), emoji: '😊' },
+    { value: 'normal', label: t('healthLog.moodNormal'), emoji: '😐' },
+    { value: 'sad', label: t('healthLog.moodSad'), emoji: '😢' },
+    { value: 'angry', label: t('healthLog.moodAngry'), emoji: '😠' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* 헤더 */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
                 onClick={() => navigate('/')}
-                className="text-blue-600 hover:text-blue-700 mb-4 flex items-center gap-2"
-            >
-                ← 돌아가기
-            </button>
-            
-            <div className="flex items-center justify-between">
-                <div>
-                <h1 className="text-3xl font-bold text-gray-800 mb-1">
-                    {selectedCat.name}의 건강 기록
+                className="text-blue-600 hover:text-blue-700 transition"
+              >
+                ← {t('healthLog.backButton')}
+              </button>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-800">
+                  {selectedCat.name}{t('healthLog.title')}
                 </h1>
-                <p className="text-gray-600">{selectedCat.breed} · {selectedCat.weight}kg</p>
-                </div>
-                
-                <button
-                onClick={() => setShowForm(true)}
-                className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition"
-                >
-                + 오늘 기록 추가
-                </button>
-            </div>
-        </div>
-
-            {/* 기록 추가 폼 */}
-            {showForm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
-                <h2 className="text-2xl font-bold mb-6">건강 기록 추가</h2>
-                
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* 날짜 */}
-                    <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        날짜
-                    </label>
-                    <input
-                        type="date"
-                        required
-                        value={formData.date}
-                        onChange={(e) => setFormData({...formData, date: e.target.value})}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    </div>
-
-                    {/* 사료량 */}
-                    <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        사료 섭취량 (g)
-                    </label>
-                    <input
-                        type="number"
-                        required
-                        value={formData.foodAmount}
-                        onChange={(e) => setFormData({...formData, foodAmount: e.target.value})}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="예: 120"
-                    />
-                    </div>
-
-                    {/* 물 섭취량 */}
-                    <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        물 섭취량 (ml)
-                    </label>
-                    <input
-                        type="number"
-                        required
-                        value={formData.waterAmount}
-                        onChange={(e) => setFormData({...formData, waterAmount: e.target.value})}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="예: 200"
-                    />
-                    </div>
-
-                    {/* 배변 횟수 */}
-                    <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        배변 횟수
-                    </label>
-                    <input
-                        type="number"
-                        required
-                        value={formData.litterCount}
-                        onChange={(e) => setFormData({...formData, litterCount: e.target.value})}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    </div>
-
-                    {/* 활동량 */}
-                    <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        활동량
-                    </label>
-                    <select
-                        value={formData.activityLevel}
-                        onChange={(e) => setFormData({...formData, activityLevel: e.target.value as any})}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    >
-                        <option value="lazy">무기력</option>
-                        <option value="normal">보통</option>
-                        <option value="active">활발</option>
-                    </select>
-                    </div>
-
-                    {/* 기분 */}
-                    <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        기분
-                    </label>
-                    <div className="flex gap-2">
-                        {[
-                        { value: 'happy', emoji: '😊', label: '행복' },
-                        { value: 'normal', emoji: '😐', label: '보통' },
-                        { value: 'sad', emoji: '😢', label: '슬픔' },
-                        { value: 'angry', emoji: '😠', label: '화남' },
-                        ].map(mood => (
-                        <button
-                            key={mood.value}
-                            type="button"
-                            onClick={() => setFormData({...formData, mood: mood.value as any})}
-                            className={`flex-1 py-3 rounded-lg border-2 transition ${
-                            formData.mood === mood.value
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'border-gray-300 hover:border-gray-400'
-                            }`}
-                        >
-                            <div className="text-2xl">{mood.emoji}</div>
-                            <div className="text-xs mt-1">{mood.label}</div>
-                        </button>
-                        ))}
-                    </div>
-                    </div>
-
-                    {/* 메모 */}
-                    <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        메모 (선택)
-                    </label>
-                    <textarea
-                        value={formData.notes}
-                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        rows={3}
-                        placeholder="특이사항을 기록하세요"
-                    />
-                    </div>
-
-                    {/* 버튼 */}
-                    <div className="flex gap-3 pt-4">
-                    <button
-                        type="button"
-                        onClick={() => setShowForm(false)}
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-                    >
-                        취소
-                    </button>
-                    <button
-                        type="submit"
-                        className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-                    >
-                        저장하기
-                    </button>
-                    </div>
-                </form>
-                </div>
-            </div>
-            )}
-
-            {/* 건강 기록 목록 */}
-            {healthLogs.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
-                <div className="text-6xl mb-4">📝</div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                아직 기록이 없어요
-                </h2>
-                <p className="text-gray-600 mb-6">
-                첫 번째 건강 기록을 추가해보세요!
+                <p className="text-sm text-gray-600">
+                  {selectedCat.breed} · {selectedCat.weight}kg
                 </p>
+              </div>
             </div>
-            ) : (
-            <div className="space-y-4">
-                {healthLogs
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                .map(log => (
-                    <div key={log.id} className="bg-white rounded-lg shadow-md p-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-bold text-gray-800">
-                        {new Date(log.date).toLocaleDateString('ko-KR', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                        })}
-                        </h3>
-                        <div className="text-3xl">
-                        {log.mood === 'happy' ? '😊' :
-                        log.mood === 'sad' ? '😢' :
-                        log.mood === 'angry' ? '😠' : '😐'}
-                        </div>
-                    </div>
+            <button
+              onClick={() => {
+                console.log('➕ Opening form...');
+                setShowForm(true);
+              }}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+            >
+              + {t('healthLog.addTodayLog')}
+            </button>
+          </div>
+        </div>
+      </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div>
-                        <p className="text-sm text-gray-600">사료</p>
-                        <p className="text-lg font-semibold">{log.foodAmount}g</p>
-                        </div>
-                        <div>
-                        <p className="text-sm text-gray-600">물</p>
-                        <p className="text-lg font-semibold">{log.waterAmount}ml</p>
-                        </div>
-                        <div>
-                        <p className="text-sm text-gray-600">배변</p>
-                        <p className="text-lg font-semibold">{log.litterCount}회</p>
-                        </div>
-                        <div>
-                        <p className="text-sm text-gray-600">활동량</p>
-                        <p className="text-lg font-semibold">
-                            {log.activityLevel === 'active' ? '활발' :
-                            log.activityLevel === 'lazy' ? '무기력' : '보통'}
-                        </p>
-                        </div>
-                    </div>
-
-                    {log.notes && (
-                        <div className="pt-4 border-t">
-                        <p className="text-sm text-gray-600 mb-1">메모</p>
-                        <p className="text-gray-800">{log.notes}</p>
-                        </div>
+      {/* 메인 콘텐츠 */}
+      <div className="max-w-4xl mx-auto px-4 py-6">
+        {catLogs.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-md p-12 text-center">
+            <div className="text-6xl mb-4">📝</div>
+            <p className="text-xl text-gray-600 mb-2">{t('healthLog.noLogs')}</p>
+            <p className="text-gray-500 mb-6">{t('healthLog.noLogsDescription')}</p>
+            <button
+              onClick={() => setShowForm(true)}
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+            >
+              + {t('healthLog.addTodayLog')}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {catLogs.map((log) => (
+              <div key={log.id} className="bg-white rounded-lg shadow-md p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-gray-800">
+                    {new Date(log.date).toLocaleDateString(
+                      t('nav.title') === 'Cat Health Manager' ? 'en-US' : 'ko-KR',
+                      { year: 'numeric', month: 'long', day: 'numeric' }
                     )}
-                    </div>
-                ))}
+                  </h3>
+                  <span className="text-2xl">{moodEmojis[log.mood]}</span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm text-gray-600">{t('healthLog.food')}</p>
+                    <p className="text-xl font-bold text-gray-800">{log.foodAmount}g</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">{t('healthLog.water')}</p>
+                    <p className="text-xl font-bold text-gray-800">{log.waterAmount}ml</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">{t('healthLog.litter')}</p>
+                    <p className="text-xl font-bold text-gray-800">{log.litterCount}{t('healthLog.times')}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">{t('healthLog.activity')}</p>
+                    <p className="text-xl font-bold text-gray-800">
+                      {activityOptions.find(opt => opt.value === log.activityLevel)?.label}
+                    </p>
+                  </div>
+                </div>
+
+                {log.notes && (
+                  <div className="border-t pt-4">
+                    <p className="text-sm text-gray-600 mb-1">{t('healthLog.memo')}</p>
+                    <p className="text-gray-800">{log.notes}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 폼 모달 */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">
+                {t('healthLog.addTodayLog')}
+              </h2>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* 날짜 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('healthLog.date')}
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                {/* 사료 & 물 */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {t('healthLog.food')} (g)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.foodAmount}
+                      onChange={(e) => setFormData({ ...formData, foodAmount: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {t('healthLog.water')} (ml)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.waterAmount}
+                      onChange={(e) => setFormData({ ...formData, waterAmount: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* 배변 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('healthLog.litter')} ({t('healthLog.times')})
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.litterCount}
+                    onChange={(e) => setFormData({ ...formData, litterCount: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                {/* 활동량 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('healthLog.activity')}
+                  </label>
+                  <select
+                    value={formData.activityLevel}
+                    onChange={(e) => setFormData({ ...formData, activityLevel: e.target.value as 'active' | 'normal' | 'lazy' })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    {activityOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 기분 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('healthLog.mood')}
+                  </label>
+                  <select
+                    value={formData.mood}
+                    onChange={(e) => setFormData({ ...formData, mood: e.target.value as 'happy' | 'normal' | 'sad' | 'angry' })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    {moodOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.emoji} {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 메모 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('healthLog.memo')}
+                  </label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    rows={3}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder={t('healthLog.memo')}
+                  />
+                </div>
+
+                {/* 버튼 */}
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      console.log('❌ Form cancelled');
+                      setShowForm(false);
+                    }}
+                    className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    {t('healthLog.cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                  >
+                    {t('healthLog.save')}
+                  </button>
+                </div>
+              </form>
             </div>
-            )}
+          </div>
         </div>
-        </div>
-    );
+      )}
+    </div>
+  );
 }
 
 export default HealthLog;
