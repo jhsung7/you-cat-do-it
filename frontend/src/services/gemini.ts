@@ -120,6 +120,110 @@ export const analyzeSymptoms = async (
     };
   }
 };
+// 음성 입력에서 건강 기록 파싱
+export const parseHealthLogFromVoice = async (
+  voiceInput: string,
+  catName: string,
+  language: 'ko' | 'en' = 'ko'
+): Promise<{
+  foodAmount?: number;
+  waterAmount?: number;
+  litterCount?: number;
+  activityLevel?: 'active' | 'normal' | 'lazy';
+  mood?: 'happy' | 'normal' | 'sad' | 'angry';
+  notes?: string;
+  success: boolean;
+  message?: string;
+}> => {
+  try {
+    if (!apiKey) {
+      return {
+        success: false,
+        message: language === 'ko' 
+          ? 'API 키가 설정되지 않았습니다.' 
+          : 'API key not configured.',
+      };
+    }
+
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+
+    const prompt = language === 'ko' ? `
+다음은 고양이 "${catName}"에 대한 건강 기록 음성 입력입니다:
+"${voiceInput}"
+
+이 입력에서 다음 정보를 추출해주세요. 정보가 없으면 null을 반환하세요:
+- 사료량 (그램 단위 숫자, foodAmount)
+- 물량 (ml 단위 숫자, waterAmount)
+- 배변 횟수 (숫자, litterCount)
+- 활동량 (active/normal/lazy 중 하나, activityLevel)
+- 기분 (happy/normal/sad/angry 중 하나, mood)
+- 추가 메모 (notes)
+
+JSON 형식으로만 응답해주세요. 예시:
+{
+  "foodAmount": 20,
+  "waterAmount": 50,
+  "litterCount": 2,
+  "activityLevel": "active",
+  "mood": "happy",
+  "notes": "츄르도 먹었음"
+}
+
+정보가 없는 필드는 포함하지 마세요.
+` : `
+This is a voice input about cat "${catName}" health log:
+"${voiceInput}"
+
+Extract the following information. Return null if not mentioned:
+- Food amount (number in grams, foodAmount)
+- Water amount (number in ml, waterAmount)
+- Litter count (number, litterCount)
+- Activity level (active/normal/lazy, activityLevel)
+- Mood (happy/normal/sad/angry, mood)
+- Additional notes (notes)
+
+Respond ONLY in JSON format. Example:
+{
+  "foodAmount": 20,
+  "waterAmount": 50,
+  "litterCount": 2,
+  "activityLevel": "active",
+  "mood": "happy",
+  "notes": "had treats"
+}
+
+Omit fields with no information.
+`;
+
+    console.log('🤖 Parsing voice input with Gemini...');
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    let text = response.text().trim();
+
+    // JSON 블록에서 추출
+    if (text.includes('```json')) {
+      text = text.split('```json')[1].split('```')[0].trim();
+    } else if (text.includes('```')) {
+      text = text.split('```')[1].split('```')[0].trim();
+    }
+
+    const parsed = JSON.parse(text);
+    console.log('✅ Parsed data:', parsed);
+
+    return {
+      ...parsed,
+      success: true,
+    };
+  } catch (error) {
+    console.error('❌ Voice parsing error:', error);
+    return {
+      success: false,
+      message: language === 'ko'
+        ? '음성 입력을 이해하지 못했습니다. 다시 시도해주세요.'
+        : 'Failed to understand voice input. Please try again.',
+    };
+  }
+};
 
 export const generateDiary = async (
   date: string,

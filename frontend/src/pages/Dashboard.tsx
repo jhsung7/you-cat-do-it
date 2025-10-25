@@ -59,7 +59,7 @@ function Dashboard() {
         {/* 메인 콘텐츠 */}
         {cats.length === 0 ? (
           <div className="bg-white rounded-lg shadow-md p-12 text-center">
-            <div className="text-6xl mb-4">🐱</div>
+            <div className="text-6xl mb-4">🐈</div>
             <p className="text-xl text-gray-600 mb-2">{t('dashboard.noCats')}</p>
             <p className="text-gray-500 mb-6">{t('dashboard.noCatsDescription')}</p>
             <button
@@ -81,7 +81,7 @@ function Dashboard() {
                 >
                   <div className="flex items-center gap-4 mb-4">
                     <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-3xl">
-                      🐱
+                      😻
                     </div>
                     <div>
                       <h3 className="text-xl font-bold text-gray-800">{cat.name}</h3>
