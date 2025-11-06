@@ -8,7 +8,6 @@ import { parseHealthLogFromVoice } from "../services/gemini";
 import type { HealthLog, Symptom } from "../types";
 import SymptomChecker from "../components/SymptomChecker";
 import DailySummary from "../components/DailySummary";
-import { popularFoodBrands, findBrandCalories } from "../data/foodBrands";
 
 interface QuickLogSettings {
     // 식사 (사료)
@@ -546,7 +545,7 @@ function HealthLogPage() {
                 <button
                     key={day}
                     onClick={() => setSelectedDate(new Date(year, month, day))}
-                    className={`p-2 rounded-lg transition min-h-[70px] flex flex-col items-start ${
+                    className={`p-1.5 rounded-lg transition min-h-[65px] flex flex-col items-start ${
                         isSelected
                             ? 'bg-blue-500 text-white'
                             : hasLogs
@@ -558,11 +557,11 @@ function HealthLogPage() {
                                 : 'text-gray-600 hover:bg-gray-100'
                         }`}
                 >
-                    <div className="text-sm font-medium mb-1">{day}</div>
+                    <div className="text-xs font-medium mb-0.5">{day}</div>
                     {hasLogs && (
-                        <div className="text-xs space-y-0.5 w-full">
-                            {totalFood > 0 && <div className="truncate">🍽️ {totalFood}g</div>}
-                            {totalWater > 0 && <div className="truncate">💧 {totalWater}ml</div>}
+                        <div className="text-[10px] leading-tight space-y-0.5 w-full">
+                            {totalFood > 0 && <div className="truncate">🍽️{totalFood}g</div>}
+                            {totalWater > 0 && <div className="truncate">💧{totalWater}ml</div>}
                             {hasSymptoms && <div>⚠️</div>}
                         </div>
                     )}
@@ -624,21 +623,8 @@ function HealthLogPage() {
             <div className="bg-white border-b">
                 <div className="max-w-4xl mx-auto px-4 py-4">
 
-                    {voiceMessage && (
-                        <div
-                            className={`mt-2 px-4 py-2 rounded-lg text-sm ${voiceMessage.includes("✅")
-                                    ? "bg-green-50 text-green-700"
-                                    : voiceMessage.includes("❌")
-                                        ? "bg-red-50 text-red-700"
-                                        : "bg-blue-50 text-blue-700"
-                                }`}
-                        >
-                            {voiceMessage}
-                        </div>
-                    )}
-
                     {/* 빠른 입력 버튼들 - 작고 정사각형 모양 */}
-                    <div className="grid grid-cols-4 md:grid-cols-7 gap-2 mb-3">
+                    <div className="grid grid-cols-4 md:grid-cols-8 gap-2 mb-3">
                         <button
                             onClick={quickLogMeal}
                             className="aspect-square flex flex-col items-center justify-center gap-0.5 p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition shadow-md hover:shadow-lg"
@@ -689,7 +675,39 @@ function HealthLogPage() {
                             <span className="text-xl">⚠️</span>
                             <span className="text-xs font-semibold">{i18n.language === 'ko' ? '증상' : 'Symptom'}</span>
                         </button>
+                        {/* Voice Input 버튼 */}
+                        {isListening ? (
+                            <button
+                                onClick={handleStopListening}
+                                className="aspect-square flex flex-col items-center justify-center gap-0.5 p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition shadow-md hover:shadow-lg animate-pulse"
+                            >
+                                <span className="text-xl">⏹️</span>
+                                <span className="text-xs font-semibold">{i18n.language === 'ko' ? '멈춤' : 'Stop'}</span>
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleVoiceInput}
+                                disabled={isProcessing}
+                                className={`aspect-square flex flex-col items-center justify-center gap-0.5 p-2 rounded-lg transition shadow-md hover:shadow-lg ${isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'} text-white`}
+                            >
+                                <span className="text-xl">{isProcessing ? '⏳' : '🎤'}</span>
+                                <span className="text-xs font-semibold">{i18n.language === 'ko' ? '음성' : 'Voice'}</span>
+                            </button>
+                        )}
                     </div>
+
+                    {voiceMessage && (
+                        <div
+                            className={`mb-3 px-4 py-2 rounded-lg text-sm ${voiceMessage.includes("✅")
+                                    ? "bg-green-50 text-green-700"
+                                    : voiceMessage.includes("❌")
+                                        ? "bg-red-50 text-red-700"
+                                        : "bg-blue-50 text-blue-700"
+                                }`}
+                        >
+                            {voiceMessage}
+                        </div>
+                    )}
 
                     {/* Detail 버튼 - 크기 유지 */}
                     <button
@@ -776,8 +794,8 @@ function HealthLogPage() {
                                 {/* 선택된 날짜의 로그 */}
                                 <div className="space-y-3">
                                     {selectedDateLogs.map(log => (
-                                        <div key={log.id} onClick={() => handleEditLog(log)} className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
-                                            <div className="flex-1 min-w-0">
+                                        <div key={log.id} className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors relative group">
+                                            <div onClick={() => handleEditLog(log)} className="flex-1 min-w-0 cursor-pointer">
                                                 <p className="text-xs text-gray-500 mb-1">{log.time}</p>
                                                 <div className="flex flex-wrap gap-2 text-xs">
                                                     {log.wetFoodAmount && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{log.wetFoodAmount}g</span>}
@@ -788,7 +806,23 @@ function HealthLogPage() {
                                                 </div>
                                                 {log.notes && <p className="text-xs text-gray-600 mt-1 line-clamp-2">{log.notes}</p>}
                                             </div>
-                                            <span className="text-lg flex-shrink-0">{moodEmojis[log.mood ?? "normal"]}</span>
+                                            <div className="flex flex-col gap-1 flex-shrink-0">
+                                                <span className="text-lg">{moodEmojis[log.mood ?? "normal"]}</span>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (confirm(i18n.language === 'ko' ? '이 기록을 삭제하시겠습니까?' : 'Delete this log?')) {
+                                                            deleteHealthLog(log.id);
+                                                            setVoiceMessage(i18n.language === 'ko' ? '✅ 삭제 완료!' : '✅ Deleted!');
+                                                            setTimeout(() => setVoiceMessage(''), 2000);
+                                                        }
+                                                    }}
+                                                    className="text-red-500 hover:text-red-700 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title={i18n.language === 'ko' ? '삭제' : 'Delete'}
+                                                >
+                                                    🗑️
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

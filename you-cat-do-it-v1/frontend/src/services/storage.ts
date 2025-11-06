@@ -7,6 +7,7 @@ const WEIGHT_LOGS_KEY = 'cat-weight-logs';
 const VET_VISITS_KEY = 'cat-vet-visits';
 const PRESCRIPTIONS_KEY = 'cat-prescriptions';
 const MOOD_LOGS_KEY = 'cat-mood-logs';
+const CHAT_HISTORY_KEY = 'chat-history';
 
 // HealthLog Storage
 export const healthLogStorage = {
@@ -226,5 +227,49 @@ export const moodLogStorage = {
     const logs = this.getAll().filter(log => log.id !== id);
     localStorage.setItem(MOOD_LOGS_KEY, JSON.stringify(logs));
     console.log('✅ Mood log deleted:', id);
+  },
+};
+
+// ChatHistory Storage
+export interface ChatMessage {
+  id: string;
+  catId?: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+export const chatHistoryStorage = {
+  getAll(): ChatMessage[] {
+    const data = localStorage.getItem(CHAT_HISTORY_KEY);
+    return data ? JSON.parse(data) : [];
+  },
+
+  getByCatId(catId?: string): ChatMessage[] {
+    const allMessages = this.getAll();
+    if (!catId) {
+      return allMessages.filter(msg => !msg.catId);
+    }
+    return allMessages.filter(msg => msg.catId === catId);
+  },
+
+  add(message: ChatMessage): void {
+    const messages = this.getAll();
+    messages.push(message);
+    // 최근 100개 메시지만 저장
+    const recent = messages.slice(-100);
+    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(recent));
+    console.log('✅ Chat message saved:', message);
+  },
+
+  clear(catId?: string): void {
+    if (!catId) {
+      localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify([]));
+      console.log('✅ All chat history cleared');
+    } else {
+      const messages = this.getAll().filter(msg => msg.catId !== catId);
+      localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages));
+      console.log('✅ Chat history cleared for cat:', catId);
+    }
   },
 };

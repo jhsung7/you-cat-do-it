@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getRelevantKnowledge } from './vetKnowledge';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -10,7 +11,31 @@ const genAI = new GoogleGenerativeAI(apiKey || '');
 
 const MODEL_NAME = 'gemini-2.5-flash';
 
-// AI 건강 상담 (개선된 버전 - 간결하고 대화 컨텍스트 유지)
+// Helper: Summarize old conversations to manage context
+const summarizeConversation = async (
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  language: 'ko' | 'en'
+): Promise<string | null> => {
+  if (messages.length < 10) return null;
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey || '');
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+
+    const oldMessages = messages.slice(0, -5);
+    const summaryPrompt = language === 'ko'
+      ? `다음 대화를 핵심 내용만 3-4줄로 요약하세요. 고양이 건강 관련 중요 정보(증상, 처방된 조언, 언급된 질환)만 포함:\n\n${oldMessages.map(m => `${m.role === 'user' ? '사용자' : '수의사'}: ${m.content}`).join('\n')}`
+      : `Summarize this conversation in 3-4 lines, focusing only on key health information (symptoms, advice given, conditions mentioned):\n\n${oldMessages.map(m => `${m.role === 'user' ? 'User' : 'Vet'}: ${m.content}`).join('\n')}`;
+
+    const result = await model.generateContent(summaryPrompt);
+    return result.response.text().trim();
+  } catch (error) {
+    console.error('Failed to summarize conversation:', error);
+    return null;
+  }
+};
+
+// AI 건강 상담 (개선된 버전 - Few-shot, CoT, RAG, Summarization)
 export const chatWithAI = async (
   userMessage: string,
   catProfile?: any,
@@ -19,74 +44,193 @@ export const chatWithAI = async (
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
 ): Promise<{
   answer: string;
+  reasoning?: string;
+  confidence?: 'high' | 'medium' | 'low';
   followUpQuestions: string[];
   sources: Array<{ type: string; date?: string; content: string }>;
 }> => {
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
-    // 개선된 시스템 프롬프트
+    // Retrieve relevant veterinary knowledge
+    const relevantKnowledge = getRelevantKnowledge(userMessage, language, 2);
+
+    // Summarize old conversation if it's long
+    const conversationSummary = conversationHistory && conversationHistory.length > 10
+      ? await summarizeConversation(conversationHistory, language)
+      : null;
+
+    // 개선된 시스템 프롬프트 with Chain-of-Thought
     const systemPrompt = language === 'ko'
       ? `당신은 경험 많은 고양이 전문 수의사입니다.
 
+답변 방식:
+1. **내부 추론 (reasoning)**: 먼저 증상을 분석하고 감별 진단을 고려합니다 (사용자에게는 보이지 않음)
+   - 가능한 원인들 나열
+   - 심각도 평가
+   - 제공된 수의학 지식 참고
+2. **답변 (answer)**: 간결한 결론 (3-4문장)
+3. **확신도 (confidence)**: high(명확한 경우), medium(추가 정보 필요), low(불확실한 경우)
+
 답변 지침:
-1. 답변은 3-4문장 이내로 간결하게 작성
-2. 핵심만 전달하고 불필요한 인사말이나 마무리 문구 생략
-3. 증상이 경미하면 "집에서 관찰 가능", 중간이면 "1-2일 관찰 후 악화시 병원", 심각하면 "즉시 병원 방문" 추천
-4. 일반적인 질문에는 병원 방문을 강요하지 말 것
-5. **중요**: 이전 대화 내용을 기억하고 반영하여 답변 (사용자가 언급한 사료, 증상 등)
-6. 답변의 근거가 되는 수의학 지식, 논문, 가이드라인이 있다면 반드시 출처를 명시
+- 핵심만 전달하고 불필요한 인사말이나 마무리 문구 생략
+- 증상이 경미하면 "집에서 관찰 가능", 중간이면 "1-2일 관찰 후 악화시 병원", 심각하면 "즉시 병원 방문" 추천
+- 일반적인 질문에는 병원 방문을 강요하지 말 것
+- **중요**: 이전 대화 내용을 기억하고 반영하여 답변 (사용자가 언급한 사료, 증상 등)
+- 답변의 근거가 되는 수의학 지식, 논문, 가이드라인이 있다면 반드시 출처를 명시
 
 출력 형식 (JSON):
 {
-  "answer": "간결한 답변 (3-4문장)",
+  "reasoning": "내부 사고 과정 - 가능한 원인, 감별 진단, 심각도 평가 (2-3문장)",
+  "answer": "사용자에게 보여줄 간결한 답변 (3-4문장)",
+  "confidence": "high|medium|low",
   "followUpQuestions": ["후속 질문 1", "후속 질문 2", "후속 질문 3"],
   "sources": [
-    {"title": "출처 제목 (논문명, 가이드라인명 등)", "reference": "저자/기관명, 연도"},
-    {"title": "AAFCO 고양이 영양 기준", "reference": "Association of American Feed Control Officials, 2023"}
+    {"title": "출처 제목", "reference": "저자/기관명, 연도"}
   ]
 }`
       : `You are an experienced veterinarian specializing in cats.
 
+Response approach:
+1. **Internal reasoning**: First analyze symptoms and consider differential diagnosis (not shown to user)
+   - List possible causes
+   - Assess severity
+   - Reference provided veterinary knowledge
+2. **Answer**: Concise conclusion (3-4 sentences)
+3. **Confidence**: high (clear case), medium (needs more info), low (uncertain)
+
 Guidelines:
-1. Keep answers concise (3-4 sentences max)
-2. Focus on key points, skip pleasantries
-3. For mild symptoms: "monitor at home", moderate: "observe 1-2 days, visit vet if worsens", severe: "immediate vet visit"
-4. Don't always recommend vet visits for general questions
-5. **Important**: Remember and reference previous conversation context (foods, symptoms mentioned)
-6. Cite veterinary knowledge, research papers, or guidelines when applicable
+- Focus on key points, skip pleasantries
+- For mild symptoms: "monitor at home", moderate: "observe 1-2 days, visit vet if worsens", severe: "immediate vet visit"
+- Don't always recommend vet visits for general questions
+- **Important**: Remember and reference previous conversation context (foods, symptoms mentioned)
+- Cite veterinary knowledge, research papers, or guidelines when applicable
 
 Output format (JSON):
 {
-  "answer": "Concise answer (3-4 sentences)",
+  "reasoning": "Internal thought process - possible causes, differential diagnosis, severity assessment (2-3 sentences)",
+  "answer": "Concise answer for user (3-4 sentences)",
+  "confidence": "high|medium|low",
   "followUpQuestions": ["Follow-up 1", "Follow-up 2", "Follow-up 3"],
   "sources": [
-    {"title": "Source title (paper, guideline, etc.)", "reference": "Author/Organization, Year"},
-    {"title": "AAFCO Feline Nutrition Standards", "reference": "Association of American Feed Control Officials, 2023"}
+    {"title": "Source title", "reference": "Author/Organization, Year"}
   ]
 }`;
 
-    let contextPrompt = systemPrompt + '\n\n';
+    // Few-shot examples
+    const fewShotExamples = language === 'ko' ? `
 
-    // 고양이 프로필
+📚 학습 예시:
+
+예시 1:
+사용자: "고양이가 사료를 평소보다 적게 먹어요"
+응답:
+{
+  "reasoning": "일시적 식욕 감소는 스트레스, 날씨 변화, 사료 기호도 변화 등으로 흔히 발생. 24시간 미만이고 다른 증상 없으면 경미. 무기력, 구토 동반 시 주의 필요.",
+  "answer": "일시적 식욕 감소는 흔합니다. 24시간 관찰하고 물은 충분히 제공하세요. 무기력하거나 구토가 동반되면 병원 방문이 필요합니다.",
+  "confidence": "high",
+  "followUpQuestions": ["다른 증상은 없나요?", "최근 사료를 바꾸셨나요?", "평소 몇 그램 정도 먹나요?"],
+  "sources": [{"title": "고양이 식욕부진 진단 가이드", "reference": "AAHA, 2023"}]
+}
+
+예시 2:
+사용자: "설사를 하는데 피가 섞여있어요"
+응답:
+{
+  "reasoning": "혈변은 장 출혈의 징후로 감염성 장염, 기생충, IBD, 종양 등 다양한 원인 가능. 탈수 위험 높고 응급 상황. 즉시 수의사 진료 필요.",
+  "answer": "혈변은 응급 상황입니다. 즉시 동물병원 방문이 필요합니다. 탈수 방지를 위해 물은 계속 제공하되 사료는 수의사 상담 전까지 급여를 중단하세요.",
+  "confidence": "high",
+  "followUpQuestions": [],
+  "sources": [{"title": "급성 위장관 출혈 진단 가이드라인", "reference": "WSAVA, 2022"}]
+}
+
+예시 3:
+사용자: "아까 로얄캐닌 추천해주셨는데, 다른 브랜드는 어때요?"
+응답:
+{
+  "reasoning": "이전 대화에서 로얄캐닌 언급됨. 사용자는 다른 옵션 탐색 중. 힐스, 퓨리나 프로플랜도 AAFCO 기준 충족하는 과학적으로 검증된 브랜드.",
+  "answer": "힐스나 퓨리나 프로플랜도 좋은 선택입니다. 로얄캐닌과 유사한 영양 기준을 충족하며, 고양이의 기호도에 따라 선택하시면 됩니다. 모두 AAFCO 인증 제품입니다.",
+  "confidence": "high",
+  "followUpQuestions": ["특정 건강 문제가 있나요?", "현재 사료에 알러지 반응은 없나요?", "나이가 어떻게 되나요?"],
+  "sources": [{"title": "AAFCO 고양이 영양 기준", "reference": "AAFCO, 2023"}]
+}
+` : `
+
+📚 Learning Examples:
+
+Example 1:
+User: "My cat is eating less than usual"
+Response:
+{
+  "reasoning": "Temporary appetite decrease commonly occurs due to stress, weather changes, or food preference shifts. If under 24 hours with no other symptoms, likely mild. Requires attention if accompanied by lethargy or vomiting.",
+  "answer": "Temporary appetite decrease is common. Monitor for 24 hours and ensure adequate water. If accompanied by lethargy or vomiting, veterinary visit is needed.",
+  "confidence": "high",
+  "followUpQuestions": ["Are there any other symptoms?", "Did you recently change food?", "How much does your cat usually eat?"],
+  "sources": [{"title": "Feline Anorexia Diagnostic Guide", "reference": "AAHA, 2023"}]
+}
+
+Example 2:
+User: "My cat has diarrhea with blood in it"
+Response:
+{
+  "reasoning": "Bloody stool indicates intestinal bleeding from infectious enteritis, parasites, IBD, tumors, etc. High dehydration risk and emergency situation. Immediate veterinary care required.",
+  "answer": "Bloody stool is an emergency. Immediate veterinary visit required. Continue providing water to prevent dehydration, but withhold food until veterinary consultation.",
+  "confidence": "high",
+  "followUpQuestions": [],
+  "sources": [{"title": "Acute Gastrointestinal Bleeding Diagnostic Guidelines", "reference": "WSAVA, 2022"}]
+}
+
+Example 3:
+User: "You recommended Royal Canin earlier, what about other brands?"
+Response:
+{
+  "reasoning": "Previous conversation mentioned Royal Canin. User exploring alternatives. Hills and Purina Pro Plan also meet AAFCO standards and are scientifically validated brands.",
+  "answer": "Hills or Purina Pro Plan are also excellent choices. They meet similar nutritional standards as Royal Canin and you can choose based on your cat's preference. All are AAFCO certified.",
+  "confidence": "high",
+  "followUpQuestions": ["Does your cat have any specific health issues?", "Any allergic reactions to current food?", "How old is your cat?"],
+  "sources": [{"title": "AAFCO Feline Nutrition Standards", "reference": "AAFCO, 2023"}]
+}
+`;
+
+    let contextPrompt = systemPrompt + fewShotExamples + '\n\n';
+
+    // RAG: Inject relevant veterinary knowledge
+    if (relevantKnowledge.length > 0) {
+      contextPrompt += language === 'ko'
+        ? '🔬 참고할 수의학 지식:\n'
+        : '🔬 Veterinary Knowledge Reference:\n';
+      relevantKnowledge.forEach(knowledge => {
+        contextPrompt += `- ${knowledge.content[language]}\n  출처: ${knowledge.source[language]}\n`;
+      });
+      contextPrompt += '\n';
+    }
+
+    // 고양이 프로필 (Priority context)
     if (catProfile) {
       let profileText = language === 'ko'
-        ? `고양이: ${catProfile.name} (${catProfile.breed}, ${catProfile.weight}kg, 중성화: ${catProfile.neutered ? 'O' : 'X'}`
-        : `Cat: ${catProfile.name} (${catProfile.breed}, ${catProfile.weight}kg, Neutered: ${catProfile.neutered ? 'Yes' : 'No'}`;
+        ? `🐱 고양이 정보: ${catProfile.name} (${catProfile.breed}, ${catProfile.weight}kg, 중성화: ${catProfile.neutered ? 'O' : 'X'}`
+        : `🐱 Cat Profile: ${catProfile.name} (${catProfile.breed}, ${catProfile.weight}kg, Neutered: ${catProfile.neutered ? 'Yes' : 'No'}`;
 
       if (catProfile.chronicConditions && catProfile.chronicConditions.length > 0) {
         profileText += language === 'ko'
-          ? `, 만성질환: ${catProfile.chronicConditions.join(', ')}`
-          : `, Chronic Conditions: ${catProfile.chronicConditions.join(', ')}`;
+          ? `, ⚠️ 만성질환: ${catProfile.chronicConditions.join(', ')}`
+          : `, ⚠️ Chronic Conditions: ${catProfile.chronicConditions.join(', ')}`;
       }
 
       contextPrompt += profileText + ')\n\n';
     }
 
-    // 대화 히스토리 (최근 5개 대화)
+    // Conversation context: Summarized old + Recent messages
     if (conversationHistory && conversationHistory.length > 0) {
-      contextPrompt += language === 'ko' ? '이전 대화:\n' : 'Previous conversation:\n';
-      conversationHistory.slice(-5).forEach(msg => {
+      if (conversationSummary) {
+        contextPrompt += language === 'ko'
+          ? `📝 이전 대화 요약:\n${conversationSummary}\n\n`
+          : `📝 Previous Conversation Summary:\n${conversationSummary}\n\n`;
+      }
+
+      contextPrompt += language === 'ko' ? '💬 최근 대화:\n' : '💬 Recent Conversation:\n';
+      const recentMessages = conversationHistory.slice(-5);
+      recentMessages.forEach(msg => {
         const role = msg.role === 'user'
           ? (language === 'ko' ? '사용자' : 'User')
           : (language === 'ko' ? '수의사' : 'Vet');
@@ -132,6 +276,8 @@ Output format (JSON):
 
     const parsed = JSON.parse(text);
     console.log('✅ Gemini response received');
+    console.log('🧠 Reasoning:', parsed.reasoning);
+    console.log('📊 Confidence:', parsed.confidence);
 
     // 출처 변환 (논문/가이드라인 형식)
     const sources: Array<{ type: string; date?: string; content: string }> = [];
@@ -147,6 +293,8 @@ Output format (JSON):
 
     return {
       answer: parsed.answer || text,
+      reasoning: parsed.reasoning,
+      confidence: parsed.confidence,
       followUpQuestions: parsed.followUpQuestions || [],
       sources
     };
