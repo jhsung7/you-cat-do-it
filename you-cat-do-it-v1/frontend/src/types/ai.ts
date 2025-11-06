@@ -17,6 +17,18 @@ export interface AIChatMessage {
   sources?: AIReferenceSource[];
 }
 
+export interface StoredAIChatMessage extends Omit<AIChatMessage, 'timestamp'> {
+  timestamp: string;
+}
+
+export interface StoredAIConversation {
+  id: string;
+  timestamp: string;
+  catId?: string;
+  catName?: string;
+  messages: StoredAIChatMessage[];
+}
+
 export interface AIConversationTurn {
   role: AIMessageRole;
   content: string;

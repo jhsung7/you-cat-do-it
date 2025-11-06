@@ -73,12 +73,29 @@
     "sendButton": "Send",
     "errorMessage": "Sorry, an error occurred. Please try again later.",
     "frequentQuestions": "Frequently Asked Questions:",
+    "savedConversationsLabel": "Saved conversations",
+    "savedConversationPlaceholder": "Resume a previous chat",
+    "newConversation": "Start new chat",
+    "noSavedConversations": "No previous chats yet.",
     "quickQuestions": {
       "q1": "My cat isn't drinking enough water",
       "q2": "Eating less food than usual",
       "q3": "Vomited",
       "q4": "Excessive shedding"
     }
+  },
+  "notifications": {
+    "catAdded": "{{name}} was added.",
+    "catUpdated": "Updated details for {{name}}.",
+    "catDeleted": "{{name}} was removed.",
+    "catSelected": "Consulting about {{name}}.",
+    "catMissing": "We couldn't find a cat with ID {{id}}.",
+    "openHealthLog": "Opened the health log.",
+    "openAddCat": "Ready to add a new cat.",
+    "aiChatLoadFailed": "Couldn't load saved chats. Starting a new session.",
+    "aiChatSaveFailed": "We couldn't store this chat locally.",
+    "aiChatRequestFailed": "AI chat is temporarily unavailable. Showing a fallback response.",
+    "dismiss": "Dismiss"
   },
   "moodLog": {
     "title": "Mood Tracker",

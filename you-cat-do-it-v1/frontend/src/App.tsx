@@ -1,10 +1,13 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
-import Dashboard from './pages/Dashboard'
-import HealthLog from './pages/HealthLog'
-import AIChat from './pages/AIChat'
 import { useCatStore } from './store/catStore'
 import { useTranslation } from 'react-i18next'
+import NotificationCenter from './components/NotificationCenter'
+import { publishTelemetryEvent } from './utils/telemetry'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const HealthLog = lazy(() => import('./pages/HealthLog'))
+const AIChat = lazy(() => import('./pages/AIChat'))
 
 function Navigation() {
   const navigate = useNavigate()
@@ -21,17 +24,24 @@ function Navigation() {
   const isHome = location.pathname === '/'
 
   const handleCatSelect = (catId: string) => {
-    console.log('🐱 Selecting cat:', catId)
     selectCat(catId)
   }
 
   const handleGoToHealthLog = () => {
-    console.log('📊 Going to health log')
+    publishTelemetryEvent({
+      type: 'navigation.healthLog',
+      severity: 'info',
+      translationKey: 'notifications.openHealthLog',
+    })
     navigate('/health-log')
   }
 
   const handleAddCat = () => {
-    console.log('➕ Going to add cat')
+    publishTelemetryEvent({
+      type: 'navigation.addCat',
+      severity: 'info',
+      translationKey: 'notifications.openAddCat',
+    })
     navigate('/')
   }
 
@@ -122,7 +132,6 @@ function App() {
   
   // 고양이 목록 로드
   useEffect(() => {
-    console.log('🔄 Loading cats...')
     loadCats()
   }, [loadCats])
 
@@ -130,12 +139,21 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen bg-gray-50">
         <Navigation />
-        
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/health-log" element={<HealthLog />} />
-          <Route path="/ai-chat" element={<AIChat />} />
-        </Routes>
+        <NotificationCenter />
+
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-24 text-gray-500">
+              Loading...
+            </div>
+          }
+        >
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/health-log" element={<HealthLog />} />
+            <Route path="/ai-chat" element={<AIChat />} />
+          </Routes>
+        </Suspense>
       </div>
     </BrowserRouter>
   )

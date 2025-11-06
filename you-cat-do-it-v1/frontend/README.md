@@ -22,6 +22,7 @@ cp .env.example .env
 
 ```
 VITE_GEMINI_API_KEY=your_actual_api_key_here
+VITE_USDA_API_KEY=your_usda_fooddata_central_key
 ```
 
 #### Gemini API 키 발급 방법
@@ -30,6 +31,11 @@ VITE_GEMINI_API_KEY=your_actual_api_key_here
 2. Google 계정으로 로그인
 3. "Create API Key" 클릭
 4. 생성된 API 키를 복사하여 `.env` 파일에 붙여넣기
+
+#### USDA FoodData Central 키 발급 방법
+
+1. [USDA FoodData Central](https://fdc.nal.usda.gov/api-key-signup.html) 방문
+2. 이메일로 API 키 신청 후 발급 받은 키를 `VITE_USDA_API_KEY`에 입력
 
 ### 3. 개발 서버 실행
 
@@ -73,6 +79,7 @@ npm run build
 - 빠른 입력 버튼 (원클릭 기록)
 - 캘린더 뷰
 - AI 건강 상담 (Gemini 2.5 Flash)
+- 신뢰 가능한 고양이 사료/간식 영양 정보 검색 (USDA FoodData Central)
 - 다국어 지원 (한국어/영어)
 
 ## 🛠️ 기술 스택
@@ -91,6 +98,7 @@ npm run build
 frontend/
 ├── src/
 │   ├── components/        # 재사용 가능한 컴포넌트
+│   │   ├── NotificationCenter.tsx
 │   │   ├── SymptomChecker.tsx
 │   │   ├── WeightChart.tsx
 │   │   ├── WeightLogger.tsx
@@ -102,14 +110,18 @@ frontend/
 │   │   └── AIChat.tsx
 │   ├── services/         # API 및 서비스
 │   │   ├── gemini.ts     # Gemini AI 연동
+│   │   ├── nutrition.ts  # USDA 기반 영양 정보 검색
 │   │   ├── storage.ts    # localStorage 관리
 │   │   └── speech.ts     # 음성 인식
 │   ├── store/            # Zustand 스토어
 │   │   ├── catStore.ts
-│   │   └── healthStore.ts
+│   │   ├── healthStore.ts
+│   │   └── notificationStore.ts
 │   ├── types/            # TypeScript 타입 정의
+│   │   ├── ai.ts
 │   │   ├── cat.ts
-│   │   └── health.ts
+│   │   ├── health.ts
+│   │   └── nutrition.ts
 │   └── locales/          # 다국어 리소스
 │       └── index.ts
 └── public/

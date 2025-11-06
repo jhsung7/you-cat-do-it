@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Cat } from '../types';
+import { publishTelemetryEvent } from '../utils/telemetry';
 
 type NewCatPayload = Omit<Cat, 'id'>;
 
@@ -49,10 +50,18 @@ export const useCatStore = create<CatStore>()(
           selectedCat: newCat,
         }));
         
-        console.log('✅ Cat added:', newCat.name);
+        publishTelemetryEvent({
+          type: 'cat.added',
+          severity: 'success',
+          translationKey: 'notifications.catAdded',
+          params: { name: newCat.name },
+          metadata: { catId: newCat.id },
+        });
       },
 
       updateCat: (id, updatedData) => {
+        const currentCat = get().cats.find((cat) => cat.id === id);
+
         set((state) => ({
           cats: state.cats.map((cat) =>
             cat.id === id ? { ...cat, ...updatedData } : cat
@@ -62,27 +71,54 @@ export const useCatStore = create<CatStore>()(
               ? { ...state.selectedCat, ...updatedData }
               : state.selectedCat,
         }));
-        
-        console.log('✅ Cat updated:', id);
+
+        const updatedName = (updatedData.name as string | undefined) ?? currentCat?.name ?? '';
+
+        publishTelemetryEvent({
+          type: 'cat.updated',
+          severity: 'success',
+          translationKey: 'notifications.catUpdated',
+          params: { name: updatedName },
+          metadata: { catId: id },
+        });
       },
 
       deleteCat: (id) => {
+        const deletedCat = get().cats.find((cat) => cat.id === id);
+
         set((state) => ({
           cats: state.cats.filter((cat) => cat.id !== id),
           selectedCat: state.selectedCat?.id === id ? null : state.selectedCat,
         }));
-        
-        console.log('🗑️ Cat deleted:', id);
+
+        publishTelemetryEvent({
+          type: 'cat.deleted',
+          severity: 'warning',
+          translationKey: 'notifications.catDeleted',
+          params: { name: deletedCat?.name ?? '' },
+          metadata: { catId: id },
+        });
       },
 
       selectCat: (id) => {
         const cat = get().cats.find((c) => c.id === id);
         if (cat) {
           set({ selectedCat: cat });
-          console.log('🐱 Cat selected:', cat.name);
+          publishTelemetryEvent({
+            type: 'cat.selected',
+            severity: 'info',
+            translationKey: 'notifications.catSelected',
+            params: { name: cat.name },
+            metadata: { catId: cat.id },
+          });
         } else {
           set({ selectedCat: null });
-          console.log('⚠️ Cat not found:', id);
+          publishTelemetryEvent({
+            type: 'cat.missing',
+            severity: 'warning',
+            translationKey: 'notifications.catMissing',
+            params: { id },
+          });
         }
       },
     }),
