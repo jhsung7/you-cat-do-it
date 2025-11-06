@@ -1,33 +1,75 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import type {
+  AIChatResponse,
+  AIConversationTurn,
+  AICatProfile,
+  AIRecentLog,
+  AIReferenceSource,
+} from '../types';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+const isGeminiConfigured = Boolean(apiKey);
 
-if (!apiKey) {
-  console.error('⚠️ Gemini API key is missing!');
+if (!isGeminiConfigured) {
+  console.warn('⚠️ Gemini API key is missing. AI chat will return fallback responses.');
 }
 
-const genAI = new GoogleGenerativeAI(apiKey || '');
+const genAI = isGeminiConfigured ? new GoogleGenerativeAI(apiKey!) : null;
 
 const MODEL_NAME = 'gemini-2.5-flash';
 
-// AI 건강 상담 (개선된 버전 - 간결하고 대화 컨텍스트 유지)
-export const chatWithAI = async (
-  userMessage: string,
-  catProfile?: any,
-  recentLogs?: any[],
-  language: 'ko' | 'en' = 'ko',
-  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
-): Promise<{
-  answer: string;
-  followUpQuestions: string[];
-  sources: Array<{ type: string; date?: string; content: string }>;
-}> => {
-  try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+const FALLBACK_RESPONSE: AIChatResponse = {
+  answer: 'AI service is unavailable at the moment. Please try again later.',
+  followUpQuestions: [],
+  sources: [],
+};
 
-    // 개선된 시스템 프롬프트
-    const systemPrompt = language === 'ko'
-      ? `당신은 경험 많은 고양이 전문 수의사입니다.
+const extractJsonPayload = (text: string): string => {
+  const trimmed = text.trim();
+  if (trimmed.includes('```json')) {
+    return trimmed.split('```json')[1].split('```')[0].trim();
+  }
+  if (trimmed.includes('```')) {
+    return trimmed.split('```')[1].split('```')[0].trim();
+  }
+  return trimmed;
+};
+
+const mapSources = (rawSources: unknown): AIReferenceSource[] => {
+  if (!Array.isArray(rawSources)) {
+    return [];
+  }
+
+  const sources: AIReferenceSource[] = [];
+
+  rawSources.forEach((source) => {
+    if (typeof source !== 'object' || source === null) {
+      return;
+    }
+
+    const { title, reference, type } = source as {
+      title?: unknown;
+      reference?: unknown;
+      type?: unknown;
+    };
+
+    if (typeof title !== 'string' || title.trim().length === 0) {
+      return;
+    }
+
+    sources.push({
+      type: typeof type === 'string' && type.trim().length > 0 ? type : 'academic',
+      content: title,
+      date: typeof reference === 'string' && reference.trim().length > 0 ? reference : undefined,
+    });
+  });
+
+  return sources;
+};
+
+const buildSystemPrompt = (language: 'ko' | 'en'): string =>
+  language === 'ko'
+    ? `당신은 경험 많은 고양이 전문 수의사입니다.
 
 답변 지침:
 1. 답변은 3-4문장 이내로 간결하게 작성
@@ -46,7 +88,7 @@ export const chatWithAI = async (
     {"title": "AAFCO 고양이 영양 기준", "reference": "Association of American Feed Control Officials, 2023"}
   ]
 }`
-      : `You are an experienced veterinarian specializing in cats.
+    : `You are an experienced veterinarian specializing in cats.
 
 Guidelines:
 1. Keep answers concise (3-4 sentences max)
@@ -66,100 +108,154 @@ Output format (JSON):
   ]
 }`;
 
-    let contextPrompt = systemPrompt + '\n\n';
+const buildCatProfileLine = (catProfile: AICatProfile, language: 'ko' | 'en'): string => {
+  const base =
+    language === 'ko'
+      ? `고양이: ${catProfile.name} (${catProfile.breed}, ${catProfile.weight}kg, 중성화: ${catProfile.neutered ? 'O' : 'X'}`
+      : `Cat: ${catProfile.name} (${catProfile.breed}, ${catProfile.weight}kg, Neutered: ${catProfile.neutered ? 'Yes' : 'No'}`;
 
-    // 고양이 프로필
-    if (catProfile) {
-      let profileText = language === 'ko'
-        ? `고양이: ${catProfile.name} (${catProfile.breed}, ${catProfile.weight}kg, 중성화: ${catProfile.neutered ? 'O' : 'X'}`
-        : `Cat: ${catProfile.name} (${catProfile.breed}, ${catProfile.weight}kg, Neutered: ${catProfile.neutered ? 'Yes' : 'No'}`;
+  if (!catProfile.chronicConditions?.length) {
+    return `${base})`;
+  }
 
-      if (catProfile.chronicConditions && catProfile.chronicConditions.length > 0) {
-        profileText += language === 'ko'
-          ? `, 만성질환: ${catProfile.chronicConditions.join(', ')}`
-          : `, Chronic Conditions: ${catProfile.chronicConditions.join(', ')}`;
-      }
+  const conditions = catProfile.chronicConditions.join(', ');
+  return (
+    base +
+    (language === 'ko'
+      ? `, 만성질환: ${conditions})`
+      : `, Chronic Conditions: ${conditions})`)
+  );
+};
 
-      contextPrompt += profileText + ')\n\n';
-    }
+const buildRecentLogLine = (log: AIRecentLog, language: 'ko' | 'en'): string | null => {
+  const details: string[] = [];
+  if (log.foodAmount) details.push(`${language === 'ko' ? '사료' : 'Food'} ${log.foodAmount}g`);
+  if (log.waterAmount) details.push(`${language === 'ko' ? '물' : 'Water'} ${log.waterAmount}ml`);
+  if (log.litterCount)
+    details.push(`${language === 'ko' ? '배변' : 'Litter'} ${log.litterCount}${language === 'ko' ? '회' : 'x'}`);
+  if (log.activityLevel) details.push(`${language === 'ko' ? '활동' : 'Activity'}: ${log.activityLevel}`);
+  if (log.mood) details.push(`${language === 'ko' ? '기분' : 'Mood'}: ${log.mood}`);
+  if (log.notes) details.push(`${language === 'ko' ? '메모' : 'Notes'}: ${log.notes}`);
 
-    // 대화 히스토리 (최근 5개 대화)
-    if (conversationHistory && conversationHistory.length > 0) {
-      contextPrompt += language === 'ko' ? '이전 대화:\n' : 'Previous conversation:\n';
-      conversationHistory.slice(-5).forEach(msg => {
-        const role = msg.role === 'user'
-          ? (language === 'ko' ? '사용자' : 'User')
-          : (language === 'ko' ? '수의사' : 'Vet');
-        contextPrompt += `${role}: ${msg.content}\n`;
-      });
-      contextPrompt += '\n';
-    }
+  if (!details.length) {
+    return null;
+  }
 
-    // 최근 기록 (더 상세하게)
-    if (recentLogs && recentLogs.length > 0) {
-      contextPrompt += language === 'ko' ? '최근 7일 건강 기록:\n' : 'Recent 7-day health records:\n';
-      recentLogs.slice(0, 7).forEach(log => {
-        const details = [];
-        if (log.foodAmount) details.push(`${language === 'ko' ? '사료' : 'Food'} ${log.foodAmount}g`);
-        if (log.waterAmount) details.push(`${language === 'ko' ? '물' : 'Water'} ${log.waterAmount}ml`);
-        if (log.litterCount) details.push(`${language === 'ko' ? '배변' : 'Litter'} ${log.litterCount}${language === 'ko' ? '회' : 'x'}`);
-        if (log.activityLevel) details.push(`${language === 'ko' ? '활동' : 'Activity'}: ${log.activityLevel}`);
-        if (log.mood) details.push(`${language === 'ko' ? '기분' : 'Mood'}: ${log.mood}`);
-        if (log.notes) details.push(`${language === 'ko' ? '메모' : 'Notes'}: ${log.notes}`);
+  return `- ${log.date}: ${details.join(', ')}`;
+};
 
-        if (details.length > 0) {
-          contextPrompt += `- ${log.date}: ${details.join(', ')}\n`;
+const buildConversationHistory = (
+  history: AIConversationTurn[] = [],
+  language: 'ko' | 'en'
+): string => {
+  if (!history.length) {
+    return '';
+  }
+
+  const label = language === 'ko' ? '이전 대화:' : 'Previous conversation:';
+  const turns = history.slice(-5).map((msg) => {
+    const role = msg.role === 'user' ? (language === 'ko' ? '사용자' : 'User') : language === 'ko' ? '수의사' : 'Vet';
+    return `${role}: ${msg.content}`;
+  });
+
+  return `${label}\n${turns.join('\n')}\n\n`;
+};
+
+const parseModelResponse = (text: string, language: 'ko' | 'en'): AIChatResponse => {
+  try {
+    const payload = extractJsonPayload(text);
+    const parsed = JSON.parse(payload) as Partial<{
+      answer: string;
+      followUpQuestions: string[];
+      sources: unknown;
+    }>;
+
+    return {
+      answer:
+        typeof parsed.answer === 'string' && parsed.answer.length > 0
+          ? parsed.answer
+          : payload,
+      followUpQuestions: Array.isArray(parsed.followUpQuestions)
+        ? parsed.followUpQuestions.filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
+        : [],
+      sources: mapSources(parsed.sources),
+    };
+  } catch (error) {
+    console.error('Failed to parse Gemini response', error);
+    return {
+      ...FALLBACK_RESPONSE,
+      answer:
+        language === 'ko'
+          ? '응답을 해석하지 못했습니다. 질문을 다시 시도해주세요.'
+          : 'Could not understand the AI response. Please try again.',
+    };
+  }
+};
+
+// AI 건강 상담 (개선된 버전 - 간결하고 대화 컨텍스트 유지)
+export const chatWithAI = async (
+  userMessage: string,
+  catProfile?: AICatProfile,
+  recentLogs: AIRecentLog[] = [],
+  language: 'ko' | 'en' = 'ko',
+  conversationHistory: AIConversationTurn[] = []
+): Promise<AIChatResponse> => {
+  if (!genAI) {
+    return language === 'ko'
+      ? {
+          ...FALLBACK_RESPONSE,
+          answer: 'AI 서비스를 사용하려면 환경 변수에 Gemini API 키를 설정해주세요.',
         }
-      });
-      contextPrompt += '\n';
+      : {
+          ...FALLBACK_RESPONSE,
+          answer: 'Configure the Gemini API key to enable AI consultations.',
+        };
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    let contextPrompt = `${buildSystemPrompt(language)}\n\n`;
+
+    if (catProfile) {
+      contextPrompt += `${buildCatProfileLine(catProfile, language)}\n\n`;
     }
 
-    contextPrompt += language === 'ko'
-      ? `사용자 질문: ${userMessage}\n\n위 JSON 형식으로 답변해주세요.`
-      : `User question: ${userMessage}\n\nRespond in the JSON format above.`;
+    contextPrompt += buildConversationHistory(conversationHistory, language);
+
+    if (recentLogs.length) {
+      const header = language === 'ko' ? '최근 7일 건강 기록:' : 'Recent 7-day health records:';
+      const lines = recentLogs
+        .slice(0, 7)
+        .map((log) => buildRecentLogLine(log, language))
+        .filter((line): line is string => Boolean(line));
+
+      if (lines.length) {
+        contextPrompt += `${header}\n${lines.join('\n')}\n\n`;
+      }
+    }
+
+    contextPrompt +=
+      language === 'ko'
+        ? `사용자 질문: ${userMessage}\n\n위 JSON 형식으로 답변해주세요.`
+        : `User question: ${userMessage}\n\nRespond in the JSON format above.`;
 
     console.log('🤖 Sending to Gemini 2.5 Flash...');
     const result = await model.generateContent(contextPrompt);
     const response = result.response;
-    let text = response.text().trim();
-
-    // JSON 추출
-    if (text.includes('```json')) {
-      text = text.split('```json')[1].split('```')[0].trim();
-    } else if (text.includes('```')) {
-      text = text.split('```')[1].split('```')[0].trim();
-    }
-
-    const parsed = JSON.parse(text);
     console.log('✅ Gemini response received');
 
-    // 출처 변환 (논문/가이드라인 형식)
-    const sources: Array<{ type: string; date?: string; content: string }> = [];
-    if (parsed.sources && Array.isArray(parsed.sources)) {
-      parsed.sources.forEach((source: any) => {
-        sources.push({
-          type: 'academic',
-          content: source.title || '',
-          date: source.reference || ''
-        });
-      });
-    }
-
-    return {
-      answer: parsed.answer || text,
-      followUpQuestions: parsed.followUpQuestions || [],
-      sources
-    };
-  } catch (error: any) {
+    return parseModelResponse(response.text(), language);
+  } catch (error) {
     console.error('❌ Gemini API Error:', error);
-    const errorMsg = language === 'ko'
-      ? `오류가 발생했습니다. 다시 시도해주세요.`
-      : `An error occurred. Please try again.`;
-    return {
-      answer: errorMsg,
-      followUpQuestions: [],
-      sources: []
-    };
+    return language === 'ko'
+      ? {
+          ...FALLBACK_RESPONSE,
+          answer: '오류가 발생했습니다. 다시 시도해주세요.',
+        }
+      : {
+          ...FALLBACK_RESPONSE,
+          answer: 'An error occurred. Please try again.',
+        };
   }
 };
 
@@ -169,6 +265,17 @@ export const analyzeSymptoms = async (
   catProfile: any,
   language: 'ko' | 'en' = 'ko'
 ) => {
+  if (!genAI) {
+    return {
+      urgency: 'warning' as const,
+      analysis:
+        language === 'ko'
+          ? 'AI 분석을 사용하려면 Gemini API 키를 설정해주세요.'
+          : 'Configure the Gemini API key to enable AI symptom analysis.',
+      recommendations: [language === 'ko' ? '수의사와 상담하세요' : 'Please consult a veterinarian'],
+    };
+  }
+
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
@@ -216,16 +323,11 @@ Respond in JSON:
 
     const result = await model.generateContent(prompt);
     const response = result.response;
-    let text = response.text().trim();
-
-    // JSON 추출
-    if (text.includes('```json')) {
-      text = text.split('```json')[1].split('```')[0].trim();
-    } else if (text.includes('```')) {
-      text = text.split('```')[1].split('```')[0].trim();
-    }
-
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(extractJsonPayload(response.text())) as {
+      urgency: 'emergency' | 'warning' | 'mild';
+      analysis: string;
+      recommendations?: string[];
+    };
 
     return {
       urgency: parsed.urgency as 'emergency' | 'warning' | 'mild',
@@ -261,16 +363,17 @@ export const parseHealthLogFromVoice = async (
   success: boolean;
   message?: string;
 }> => {
-  try {
-    if (!apiKey) {
-      return {
-        success: false,
-        message: language === 'ko' 
-          ? 'API 키가 설정되지 않았습니다.' 
-          : 'API key not configured.',
-      };
-    }
+  if (!genAI) {
+    return {
+      success: false,
+      message:
+        language === 'ko'
+          ? 'AI 음성 인식을 사용하려면 Gemini API 키를 설정해주세요.'
+          : 'Configure the Gemini API key to enable AI voice parsing.',
+    };
+  }
 
+  try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     const prompt = language === 'ko' ? `
@@ -354,16 +457,7 @@ JSON response format:
     console.log('🤖 Parsing voice input with Gemini...');
     const result = await model.generateContent(prompt);
     const response = result.response;
-    let text = response.text().trim();
-
-    // JSON 블록에서 추출
-    if (text.includes('```json')) {
-      text = text.split('```json')[1].split('```')[0].trim();
-    } else if (text.includes('```')) {
-      text = text.split('```')[1].split('```')[0].trim();
-    }
-
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(extractJsonPayload(response.text()));
     console.log('✅ Parsed data:', parsed);
 
     return {
@@ -388,6 +482,12 @@ export const generateDiary = async (
   style: 'cute' | 'cynical' | 'philosophical' | 'humorous' = 'cute',
   language: 'ko' | 'en' = 'ko'
 ) => {
+  if (!genAI) {
+    return language === 'ko'
+      ? 'AI 일기를 생성하려면 Gemini API 키를 설정해주세요.'
+      : 'Configure the Gemini API key to generate diary entries.';
+  }
+
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 

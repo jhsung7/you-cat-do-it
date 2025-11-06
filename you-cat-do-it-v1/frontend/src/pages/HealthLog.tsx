@@ -8,7 +8,6 @@ import { parseHealthLogFromVoice } from "../services/gemini";
 import type { HealthLog, Symptom } from "../types";
 import SymptomChecker from "../components/SymptomChecker";
 import DailySummary from "../components/DailySummary";
-import { popularFoodBrands, findBrandCalories } from "../data/foodBrands";
 
 interface QuickLogSettings {
     // 식사 (사료)
@@ -37,7 +36,7 @@ function HealthLogPage() {
     const navigate = useNavigate();
     const { t, i18n } = useTranslation();
     const { selectedCat } = useCatStore();
-    const { addHealthLog, updateHealthLog, deleteHealthLog, getRecentLogs } = useHealthStore();
+    const { addHealthLog, updateHealthLog, getRecentLogs } = useHealthStore();
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [showForm, setShowForm] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
@@ -688,6 +687,45 @@ function HealthLogPage() {
                         >
                             <span className="text-xl">⚠️</span>
                             <span className="text-xs font-semibold">{i18n.language === 'ko' ? '증상' : 'Symptom'}</span>
+                        </button>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-2 mb-3">
+                        <button
+                            onClick={handleVoiceInput}
+                            disabled={isListening || isProcessing}
+                            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition shadow-md hover:shadow-lg ${
+                                isListening || isProcessing
+                                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none hover:shadow-none'
+                                    : 'bg-indigo-500 text-white hover:bg-indigo-600'
+                            }`}
+                        >
+                            <span>🎤</span>
+                            <span>
+                                {isProcessing
+                                    ? i18n.language === 'ko'
+                                        ? 'AI 분석 중...'
+                                        : 'Analyzing...'
+                                    : isListening
+                                        ? i18n.language === 'ko'
+                                            ? '듣는 중...'
+                                            : 'Listening...'
+                                        : i18n.language === 'ko'
+                                            ? '음성으로 기록하기'
+                                            : 'Log with voice'}
+                            </span>
+                        </button>
+                        <button
+                            onClick={handleStopListening}
+                            disabled={!isListening}
+                            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition shadow-md hover:shadow-lg ${
+                                isListening
+                                    ? 'bg-gray-900 text-white hover:bg-gray-800'
+                                    : 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none hover:shadow-none'
+                            }`}
+                        >
+                            <span>⏹️</span>
+                            <span>{i18n.language === 'ko' ? '음성 입력 중지' : 'Stop voice input'}</span>
                         </button>
                     </div>
 

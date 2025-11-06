@@ -1,21 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useCatStore } from '../store/catStore';
 import { useHealthStore } from '../store/healthStore';
 import { chatWithAI } from '../services/gemini';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  followUpQuestions?: string[];
-  sources?: Array<{
-    type: string;
-    date?: string;
-    content: string;
-  }>;
-}
+import type { AIChatMessage, AIConversationTurn } from '../types';
 
 function AIChat() {
   const navigate = useNavigate();
@@ -23,7 +12,7 @@ function AIChat() {
   const { cats, selectedCat } = useCatStore();
   const { getRecentLogs } = useHealthStore();
   
-  const [messages, setMessages] = useState<Message[]>([
+  const [messages, setMessages] = useState<AIChatMessage[]>([
     {
       role: 'assistant',
       content: t('aiChat.greeting'),
@@ -36,44 +25,50 @@ function AIChat() {
   const conversationIdRef = useRef<string>(crypto.randomUUID());
 
   // 대화 기록을 localStorage에 저장 (최대 5개 대화)
-  const saveConversationToStorage = (conversationMessages: Message[]) => {
-    try {
-      const storageKey = 'ai-chat-conversations';
-      const stored = localStorage.getItem(storageKey);
-      const conversations = stored ? JSON.parse(stored) : [];
+  const saveConversationToStorage = useCallback(
+    (conversationMessages: AIChatMessage[]) => {
+      try {
+        const storageKey = 'ai-chat-conversations';
+        const stored = localStorage.getItem(storageKey);
+        const conversations = stored ? JSON.parse(stored) : [];
 
-      // greeting 메시지 제외, 실제 대화만
-      const actualMessages = conversationMessages.slice(1);
-      if (actualMessages.length === 0) return;
+        // greeting 메시지 제외, 실제 대화만
+        const actualMessages = conversationMessages.slice(1);
+        if (actualMessages.length === 0) return;
 
-      // 현재 대화 세션 ID로 기존 대화를 찾거나 새로 추가
-      const existingIndex = conversations.findIndex(
-        (conv: any) => conv.id === conversationIdRef.current
-      );
+        // 현재 대화 세션 ID로 기존 대화를 찾거나 새로 추가
+        const existingIndex = conversations.findIndex(
+          (conv: any) => conv.id === conversationIdRef.current
+        );
 
-      const conversationData = {
-        id: conversationIdRef.current,
-        timestamp: new Date().toISOString(),
-        catId: selectedCat?.id,
-        catName: selectedCat?.name,
-        messages: actualMessages,
-      };
+        const conversationData = {
+          id: conversationIdRef.current,
+          timestamp: new Date().toISOString(),
+          catId: selectedCat?.id,
+          catName: selectedCat?.name,
+          messages: actualMessages.map((message) => ({
+            ...message,
+            timestamp: message.timestamp.toISOString(),
+          })),
+        };
 
-      if (existingIndex >= 0) {
-        // 기존 대화 업데이트
-        conversations[existingIndex] = conversationData;
-      } else {
-        // 새 대화 추가
-        conversations.push(conversationData);
+        if (existingIndex >= 0) {
+          // 기존 대화 업데이트
+          conversations[existingIndex] = conversationData;
+        } else {
+          // 새 대화 추가
+          conversations.push(conversationData);
+        }
+
+        // 최근 5개만 유지
+        const recentConversations = conversations.slice(-5);
+        localStorage.setItem(storageKey, JSON.stringify(recentConversations));
+      } catch (error) {
+        console.error('Failed to save conversation:', error);
       }
-
-      // 최근 5개만 유지
-      const recentConversations = conversations.slice(-5);
-      localStorage.setItem(storageKey, JSON.stringify(recentConversations));
-    } catch (error) {
-      console.error('Failed to save conversation:', error);
-    }
-  };
+    },
+    [selectedCat?.id, selectedCat?.name]
+  );
 
   useEffect(() => {
     setMessages([{
@@ -87,10 +82,10 @@ function AIChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!input.trim()) return;
 
-    const userMessage: Message = {
+    const userMessage: AIChatMessage = {
       role: 'user',
       content: input,
       timestamp: new Date(),
@@ -104,19 +99,19 @@ function AIChat() {
       const recentLogs = selectedCat ? getRecentLogs(selectedCat.id, 7) : [];
 
       // 대화 히스토리 생성 (첫 인사 메시지 제외)
-      const conversationHistory = messages
+      const conversationHistory: AIConversationTurn[] = messages
         .slice(1) // 첫 greeting 메시지 제외
         .map(msg => ({ role: msg.role, content: msg.content }));
 
       const response = await chatWithAI(
         input,
-        selectedCat,
+        selectedCat ?? undefined,
         recentLogs,
         i18n.language as 'ko' | 'en',
         conversationHistory
       );
 
-      const aiMessage: Message = {
+      const aiMessage: AIChatMessage = {
         role: 'assistant',
         content: response.answer,
         timestamp: new Date(),
@@ -132,7 +127,7 @@ function AIChat() {
       });
     } catch (error) {
       console.error('AI Chat Error:', error);
-      const errorMessage: Message = {
+      const errorMessage: AIChatMessage = {
         role: 'assistant',
         content: t('aiChat.errorMessage'),
         timestamp: new Date(),
@@ -141,21 +136,24 @@ function AIChat() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [input, i18n.language, messages, saveConversationToStorage, selectedCat, getRecentLogs, t]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
-  const quickQuestions = [
-    t('aiChat.quickQuestions.q1'),
-    t('aiChat.quickQuestions.q2'),
-    t('aiChat.quickQuestions.q3'),
-    t('aiChat.quickQuestions.q4'),
-  ];
+  const quickQuestions = useMemo(
+    () => [
+      t('aiChat.quickQuestions.q1'),
+      t('aiChat.quickQuestions.q2'),
+      t('aiChat.quickQuestions.q3'),
+      t('aiChat.quickQuestions.q4'),
+    ],
+    [t]
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -299,7 +297,7 @@ function AIChat() {
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 placeholder={t('aiChat.placeholder')}
                 className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 rows={2}

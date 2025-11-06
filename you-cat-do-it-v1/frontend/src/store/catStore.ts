@@ -1,21 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { Cat } from '../types';
 
-export interface Cat {
-  id: string;
-  name: string;
-  breed: string;
-  birthDate: string;
-  weight: number;
-  gender: 'male' | 'female';
-  neutered: boolean;
-  chronicConditions?: string[];
-}
+type NewCatPayload = Omit<Cat, 'id'>;
 
 interface CatStore {
   cats: Cat[];
   selectedCat: Cat | null;
-  addCat: (cat: Omit<Cat, 'id'>) => void;
+  addCat: (cat: NewCatPayload) => void;
   updateCat: (id: string, cat: Partial<Cat>) => void;
   deleteCat: (id: string) => void;
   selectCat: (id: string) => void;
@@ -29,8 +21,21 @@ export const useCatStore = create<CatStore>()(
       selectedCat: null,
 
       loadCats: () => {
-        // persist 미들웨어가 자동으로 로드하므로 여기서는 아무것도 안 함
-        console.log('📦 Cats loaded from storage:', get().cats.length);
+        const { cats, selectedCat } = get();
+        if (!cats.length) {
+          set({ selectedCat: null });
+          return;
+        }
+
+        if (!selectedCat) {
+          set({ selectedCat: cats[0] });
+          return;
+        }
+
+        const stillExists = cats.some((cat) => cat.id === selectedCat.id);
+        if (!stillExists) {
+          set({ selectedCat: cats[0] ?? null });
+        }
       },
 
       addCat: (catData) => {

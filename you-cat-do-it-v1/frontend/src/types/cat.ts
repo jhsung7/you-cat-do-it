@@ -4,7 +4,7 @@ export interface Cat {
     name: string;
     birthDate: string;        // "2020-05-15" 형식
     breed: string;            // 품종
-    gender: 'male' | 'female' | 'unknown';
+    gender: 'male' | 'female';
     neutered: boolean;        // 중성화 여부
     weight: number;           // 현재 체중 (kg)
     photoUrl?: string;        // 사진 URL (선택)
