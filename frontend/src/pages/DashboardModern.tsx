@@ -297,7 +297,6 @@ function DashboardModern() {
   const [showSymptomChecker, setShowSymptomChecker] = useState(false)
   const [showMoodModal, setShowMoodModal] = useState(false)
   const [showQuickSettings, setShowQuickSettings] = useState(false)
-  const [showPlayModal, setShowPlayModal] = useState(false)
   const [voiceMessage, setVoiceMessage] = useState('')
   const [isReadingSummary, setIsReadingSummary] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -679,25 +678,6 @@ function DashboardModern() {
     setShowAppointmentModal(false)
     setVoiceMessage(i18n.language === 'ko' ? '📅 예약이 추가되었습니다!' : '📅 Appointment scheduled!')
     setTimeout(() => setVoiceMessage(''), 2500)
-  }
-
-  const quickLogPlaySession = (mode: 'toys' | 'catWheel') => {
-    if (!ensureCatSelected()) return
-    const duration =
-      mode === 'catWheel' ? quickLogSettings.playDurationWheel : quickLogSettings.playDurationToys
-    addLog({
-      type: 'play',
-      playType: mode,
-      playDurationMinutes: duration,
-      notes:
-        i18n.language === 'ko'
-          ? mode === 'catWheel'
-            ? '러닝휠 놀이 기록'
-            : '장난감 놀이 기록'
-          : mode === 'catWheel'
-          ? 'Cat wheel session'
-          : 'Toy play session',
-    })
   }
 
   const quickLogBrushing = () => {
@@ -1252,12 +1232,6 @@ function DashboardModern() {
               className="rounded-2xl border border-green-200 px-4 py-3 text-sm font-semibold text-green-700"
             >
               🪥 {t('dashboard.quickActionsBrushTeeth')}
-            </button>
-            <button
-              onClick={() => setShowPlayModal(true)}
-              className="rounded-2xl border border-teal-200 px-4 py-3 text-sm font-semibold text-teal-700"
-            >
-              🎾 {t('dashboard.quickActionsPlay')}
             </button>
             <button
               onClick={() => setShowWeightLogger(true)}
