@@ -1,0 +1,16 @@
+# Render 배포 설정
+services:
+  - type: web
+    name: cat-health-backend
+    env: node
+    region: oregon  # 또는 singapore (한국과 가까움)
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # GEMINI_API_KEY와 FRONTEND_URL은 Render 대시보드에서 수동으로 설정

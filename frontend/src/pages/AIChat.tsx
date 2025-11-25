@@ -378,13 +378,13 @@ function AIChat() {
                 {/* Sources */}
                 {message.role === 'assistant' && message.sources && message.sources.length > 0 && (
                   <div className="flex justify-start">
-                    <div className="max-w-[70%] rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2">
-                      <p className="text-[11px] font-semibold text-amber-900 mb-1">
+                    <div className="max-w-[60%] rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-2">
+                      <p className="text-[10px] font-semibold text-amber-900 mb-1">
                         📚 {i18n.language === 'ko' ? '참고 자료' : 'References'}
                       </p>
                       <ul className="space-y-1">
                         {message.sources.map((source, sIndex) => (
-                          <li key={sIndex} className="text-[11px] text-amber-900 leading-snug">
+                          <li key={sIndex} className="text-[10px] text-amber-900 leading-snug">
                             <span className="font-medium">{source.content}</span>
                             {source.date && <span className="ml-1 text-amber-700 italic">({source.date})</span>}
                             {source.url && (
@@ -392,7 +392,7 @@ function AIChat() {
                                 href={source.url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="ml-2 text-blue-600 underline"
+                                className="ml-1 text-blue-600 underline"
                               >
                                 {i18n.language === 'ko' ? '원문' : 'Source'}
                               </a>

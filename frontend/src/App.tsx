@@ -1,11 +1,14 @@
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
-import Dashboard from './pages/DashboardModern'
-import HealthRecords from './pages/HealthRecords'
-import NutritionTracker from './pages/NutritionTracker'
-import AIChat from './pages/AIChat'
 import { useCatStore } from './store/catStore'
 import { useTranslation } from 'react-i18next'
+import ErrorBoundary from './components/ErrorBoundary'
+
+// Lazy load route components for code splitting and better performance
+const Dashboard = lazy(() => import('./pages/DashboardModern'))
+const HealthRecords = lazy(() => import('./pages/HealthRecords'))
+const NutritionTracker = lazy(() => import('./pages/NutritionTracker'))
+const AIChat = lazy(() => import('./pages/AIChat'))
 
 const fallbackAvatar =
   'https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=200&q=60'
@@ -299,22 +302,33 @@ function App() {
   }, [loadCats])
 
   return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-gray-50 lg:flex">
-        <Navigation />
+    <ErrorBoundary>
+      <BrowserRouter>
+        <div className="min-h-screen bg-gray-50 lg:flex">
+          <Navigation />
 
-        <div className="flex-1">
-          <main className="px-4 pb-12 pt-6 lg:px-10 lg:pt-10">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/health-records" element={<HealthRecords />} />
-              <Route path="/nutrition" element={<NutritionTracker />} />
-              <Route path="/ai-chat" element={<AIChat />} />
-            </Routes>
-          </main>
+          <div className="flex-1">
+            <main className="px-4 pb-12 pt-6 lg:px-10 lg:pt-10">
+              <Suspense fallback={
+                <div className="flex items-center justify-center min-h-[50vh]">
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                    <p className="text-gray-600 font-medium">Loading...</p>
+                  </div>
+                </div>
+              }>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/health-records" element={<HealthRecords />} />
+                  <Route path="/nutrition" element={<NutritionTracker />} />
+                  <Route path="/ai-chat" element={<AIChat />} />
+                </Routes>
+              </Suspense>
+            </main>
+          </div>
         </div>
-      </div>
-    </BrowserRouter>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
 

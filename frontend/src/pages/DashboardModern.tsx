@@ -6,7 +6,7 @@ import { useHealthStore } from '../store/healthStore'
 import WeightLogger from '../components/WeightLogger'
 import SymptomChecker from '../components/SymptomChecker'
 import DailySummary from '../components/DailySummary'
-import { startVoiceRecognition } from '../services/speech'
+import { startVoiceRecognition, stopVoiceRecognition } from '../services/speech'
 import { parseHealthLogFromVoice } from '../services/gemini'
 import { HealthLog, Symptom, WeightLog, HealthAnomaly, Cat, Medication } from '../types'
 import { calculateDER, calculateRecommendedWater, estimateFoodCalories } from '../utils/calorieCalculator'
@@ -31,6 +31,8 @@ type QuickLogSettings = {
   playDurationWheel: number
   dentalProduct?: string
 }
+
+type DisplayEntry = { kind: 'health'; log: HealthLog } | { kind: 'weight'; log: WeightLog }
 
 const fallbackAvatar =
   'https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=200&q=60'
@@ -223,8 +225,8 @@ const buildAiSummary = (
   return {
     headline: hasAlert
       ? lang === 'ko'
-        ? '⚠️ 집중 관리가 필요해요'
-        : '⚠️ Attention needed'
+        ? '📋 AI 권장 요약'
+        : '⚠️ AI Health Alert'
       : lang === 'ko'
       ? `${cat.name} 맞춤 코칭`
       : `Coaching for ${cat.name}`,
@@ -277,6 +279,7 @@ function DashboardModern() {
   const lang = (i18n.language === 'ko' ? 'ko' : 'en') as 'ko' | 'en'
   const { addCat, updateCat, deleteCat, selectedCat } = useCatStore()
   const {
+    weightLogs,
     loadWeightLogs,
     addWeightLog,
     getRecentLogs,
@@ -294,6 +297,7 @@ function DashboardModern() {
   const [showSymptomChecker, setShowSymptomChecker] = useState(false)
   const [showMoodModal, setShowMoodModal] = useState(false)
   const [showQuickSettings, setShowQuickSettings] = useState(false)
+  const [showPlayModal, setShowPlayModal] = useState(false)
   const [voiceMessage, setVoiceMessage] = useState('')
   const [isReadingSummary, setIsReadingSummary] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -321,6 +325,7 @@ function DashboardModern() {
     visitReason: '',
     notes: '',
   })
+  const recognitionRef = useRef<ReturnType<typeof startVoiceRecognition>>(null)
 
   const [quickLogSettings, setQuickLogSettings] = useState<QuickLogSettings>(() => {
     const saved = localStorage.getItem('quickLogSettings')
@@ -372,6 +377,8 @@ function DashboardModern() {
 
   useEffect(() => {
     return () => {
+      stopVoiceRecognition(recognitionRef.current)
+      recognitionRef.current = null
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel()
       }
@@ -417,24 +424,39 @@ function DashboardModern() {
       quickLogSettings.treatCaloriesPer100g,
     ]
   )
+  const weightHistory = selectedCat ? weightLogs : []
+  const latestWeightLog = weightHistory.length ? weightHistory[weightHistory.length - 1] : null
+  const baselineWeight = latestWeightLog?.weight ?? selectedCat?.weight ?? 0
+  const displayEntries = useMemo<DisplayEntry[]>(() => {
+    if (!selectedCat) return []
+    const entries: DisplayEntry[] = [
+      ...catLogs.map((log) => ({ kind: 'health' as const, log })),
+      ...weightHistory.map((log) => ({ kind: 'weight' as const, log })),
+    ]
+    return entries.sort((a, b) => b.log.timestamp - a.log.timestamp)
+  }, [selectedCat, catLogs, weightHistory])
 
   const logsByDate = useMemo(() => {
-    return catLogs.reduce<Record<string, HealthLog[]>>((acc, log) => {
-      if (!acc[log.date]) acc[log.date] = []
-      acc[log.date].push(log)
+    return displayEntries.reduce<Record<string, DisplayEntry[]>>((acc, entry) => {
+      const date = entry.log.date
+      if (!acc[date]) acc[date] = []
+      acc[date].push(entry)
       return acc
     }, {})
-  }, [catLogs])
+  }, [displayEntries])
 
   const selectedDateStr = selectedDate.toISOString().split('T')[0]
-  const selectedDateLogs = logsByDate[selectedDateStr] || []
+  const selectedDateEntries = logsByDate[selectedDateStr] || []
+  const selectedDateHealthLogs = selectedDateEntries
+    .filter((entry) => entry.kind === 'health')
+    .map((entry) => entry.log)
   const upcomingVisits = useMemo(() => {
     if (!selectedCat) return []
     const visits = [...getVetVisits(selectedCat.id)]
     return visits.sort((a, b) => a.timestamp - b.timestamp)
   }, [selectedCat, getVetVisits])
-  const isFilteredByDate = Boolean(selectedCat && selectedDateLogs.length > 0)
-  const displayedLogs = isFilteredByDate ? selectedDateLogs : catLogs
+  const isFilteredByDate = Boolean(selectedCat && selectedDateEntries.length > 0)
+  const displayedEntries = isFilteredByDate ? selectedDateEntries : displayEntries
   const summarySpeechRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   const saveSettings = () => {
@@ -750,6 +772,24 @@ function DashboardModern() {
             }
             useHealthStore.getState().addSymptom(symptom)
           }
+          const summaryParts: string[] = []
+          if (parsed.foodAmount) summaryParts.push(`${t('healthLog.food')}: ${parsed.foodAmount}g`)
+          if (parsed.waterAmount) summaryParts.push(`${t('healthLog.water')}: ${parsed.waterAmount}ml`)
+          if (parsed.litterCount) summaryParts.push(`${t('healthLog.litter')}: ${parsed.litterCount}`)
+          if (parsed.symptom) {
+            summaryParts.push(
+              lang === 'ko'
+                ? `증상: ${parsed.symptom.type}`
+                : `Symptom: ${parsed.symptom.type}`
+            )
+          }
+          const summaryText = summaryParts.length ? summaryParts.join(' · ') : transcript
+          setVoiceMessage(
+            lang === 'ko'
+              ? `✅ 음성 기록 완료: ${summaryText}`
+              : `✅ Voice log saved: ${summaryText}`
+          )
+          setTimeout(() => setVoiceMessage(''), 3500)
         } else {
           setVoiceMessage(i18n.language === 'ko' ? '❌ 음성을 이해하지 못했습니다.' : '❌ Unable to understand.')
           setTimeout(() => setVoiceMessage(''), 3000)
@@ -759,19 +799,29 @@ function DashboardModern() {
         setIsListening(false)
         setVoiceMessage(error)
         setTimeout(() => setVoiceMessage(''), 3000)
-      }
+      },
+      lang
     )
 
-    // expose to stop button
-    ;(window as any).__voiceRecognition = recognition
+    if (!recognition) {
+      setIsProcessing(false)
+      setIsListening(false)
+      return
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+      setIsProcessing(false)
+      recognitionRef.current = null
+    }
+    recognitionRef.current = recognition
   }
 
   const handleStopListening = () => {
-    const recognition = (window as any).__voiceRecognition
-    recognition?.stop()
+    stopVoiceRecognition(recognitionRef.current)
+    recognitionRef.current = null
     setIsListening(false)
     setIsProcessing(false)
-    ;(window as any).__voiceRecognition = null
   }
 
   const syncModalParam = (value?: 'addCat' | 'editCat') => {
@@ -898,28 +948,32 @@ function DashboardModern() {
     setShowDetailedLog(false)
   }
 
-  const getDayBadges = (dayLogs: HealthLog[]) => {
-    if (!dayLogs.length) return []
+  const getDayBadges = (dayEntries: DisplayEntry[]) => {
+    if (!dayEntries.length) return []
     const badges: string[] = []
+    const healthEntries = dayEntries.filter((entry) => entry.kind === 'health').map((entry) => entry.log)
     if (
-      dayLogs.some(
+      healthEntries.some(
         (log) =>
           (log.wetFoodAmount || 0) + (log.dryFoodAmount || 0) + (log.snackAmount || 0) > 0
       )
     ) {
       badges.push('🍽️')
     }
-    if (dayLogs.some((log) => (log.waterAmount || 0) > 0)) {
+    if (healthEntries.some((log) => (log.waterAmount || 0) > 0)) {
       badges.push('💧')
     }
-    if (dayLogs.some((log) => (log.litterCount || 0) > 0)) {
+    if (healthEntries.some((log) => (log.litterCount || 0) > 0)) {
       badges.push('💩')
     }
-    if (dayLogs.some((log) => (log.playDurationMinutes || 0) > 0)) {
+    if (healthEntries.some((log) => (log.playDurationMinutes || 0) > 0)) {
       badges.push('🎾')
     }
-    if (dayLogs.some((log) => log.brushedTeeth)) {
+    if (healthEntries.some((log) => log.brushedTeeth)) {
       badges.push('🪥')
+    }
+    if (dayEntries.some((entry) => entry.kind === 'weight')) {
+      badges.push('⚖️')
     }
     return badges.slice(0, 4)
   }
@@ -940,8 +994,8 @@ function DashboardModern() {
       const date = new Date(year, month, day)
       const dateStr = date.toISOString().split('T')[0]
       const isSelected = selectedDateStr === dateStr
-      const dayLogs = logsByDate[dateStr] || []
-      const dayBadges = getDayBadges(dayLogs)
+      const dayEntries = logsByDate[dateStr] || []
+      const dayBadges = getDayBadges(dayEntries)
 
       days.push(
         <button
@@ -950,7 +1004,7 @@ function DashboardModern() {
           className={`rounded-2xl p-2 text-left text-sm transition ${
             isSelected
               ? 'bg-indigo-600 text-white shadow-lg'
-              : dayLogs.length > 0
+              : dayEntries.length > 0
               ? 'bg-indigo-50 text-indigo-700'
               : 'text-gray-500 hover:bg-slate-50'
           }`}
@@ -1068,7 +1122,7 @@ function DashboardModern() {
                     className="inline-flex items-center justify-end gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
                   >
                     {isReadingSummary ? '⏹️' : '🔊'}{' '}
-                    {isReadingSummary ? t('dashboard.aiSummaryStop') : t('dashboard.aiSummaryRead')}
+                    {isReadingSummary ? t('dashboard.aiSummary.stop') : t('dashboard.aiSummary.read')}
                   </button>
                 </div>
               </div>
@@ -1132,8 +1186,18 @@ function DashboardModern() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-gray-500">{t('dashboard.quickActionsTitle')}</p>
-              <p className="text-sm text-gray-400">{t('dashboard.quickActionsDescription')}</p>
-            </div>
+            <p className="text-sm text-gray-400">{t('dashboard.quickActionsDescription')}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setDetailedLogData(createInitialDetailedLog())
+                setShowDetailedLog(true)
+              }}
+              className="inline-flex items-center rounded-full border border-purple-200 px-3 py-1 text-xs font-semibold text-purple-700 hover:border-purple-300"
+            >
+              📝 {i18n.language === 'ko' ? '상세 기록' : 'Detailed Log'}
+            </button>
             <button
               onClick={() => setShowQuickSettings(true)}
               className="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600 hover:border-indigo-200 hover:text-indigo-600"
@@ -1141,6 +1205,7 @@ function DashboardModern() {
               ⚙️ {t('dashboard.quickActionSettings')}
             </button>
           </div>
+        </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             <button
@@ -1163,7 +1228,7 @@ function DashboardModern() {
             </button>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4 grid gap-3 grid-cols-2 sm:grid-cols-4">
             <button
               onClick={() => setShowMoodModal(true)}
               className="rounded-2xl border border-yellow-200 px-4 py-3 text-sm font-semibold text-yellow-700"
@@ -1189,31 +1254,16 @@ function DashboardModern() {
               🪥 {t('dashboard.quickActionsBrushTeeth')}
             </button>
             <button
-              onClick={() => quickLogPlaySession('toys')}
+              onClick={() => setShowPlayModal(true)}
               className="rounded-2xl border border-teal-200 px-4 py-3 text-sm font-semibold text-teal-700"
             >
-              🎾 {t('dashboard.quickActionsPlayToys')}
-            </button>
-            <button
-              onClick={() => quickLogPlaySession('catWheel')}
-              className="rounded-2xl border border-emerald-200 px-4 py-3 text-sm font-semibold text-emerald-700"
-            >
-              🛞 {t('dashboard.quickActionsPlayWheel')}
+              🎾 {t('dashboard.quickActionsPlay')}
             </button>
             <button
               onClick={() => setShowWeightLogger(true)}
               className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
             >
               ⚖️ {i18n.language === 'ko' ? '체중' : 'Weight'}
-            </button>
-            <button
-              onClick={() => {
-                setDetailedLogData(createInitialDetailedLog())
-                setShowDetailedLog(true)
-              }}
-              className="rounded-2xl border border-purple-200 px-4 py-3 text-sm font-semibold text-purple-700"
-            >
-              📝 {i18n.language === 'ko' ? '상세 기록' : 'Detailed Log'}
             </button>
             <button
               onClick={openMedicationManager}
@@ -1273,10 +1323,10 @@ function DashboardModern() {
         </div>
 
         <div className="rounded-3xl bg-white p-6 shadow-sm">
-          {selectedCat && selectedDateLogs.length > 0 ? (
+          {selectedCat && selectedDateHealthLogs.length > 0 ? (
             <DailySummary
               cat={selectedCat}
-              dailyLogs={selectedDateLogs}
+              dailyLogs={selectedDateHealthLogs}
               date={selectedDate}
               wetFoodCaloriesPer100g={quickLogSettings.wetFoodCaloriesPer100g}
               dryFoodCaloriesPer100g={quickLogSettings.dryFoodCaloriesPer100g}
@@ -1308,10 +1358,46 @@ function DashboardModern() {
           </button>
         </div>
         <div className="mt-4 space-y-3 text-sm text-gray-600">
-          {displayedLogs.length === 0 && (
+          {displayedEntries.length === 0 && (
             <p className="text-gray-500">{t('dashboard.calendarEmpty')}</p>
           )}
-          {displayedLogs.map((log) => {
+          {displayedEntries.map((entry) => {
+            if (entry.kind === 'weight') {
+              const weightLog = entry.log
+              const logDate = new Date(weightLog.timestamp)
+              return (
+                <div
+                  key={`weight-${weightLog.id}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => jumpToLogDate(weightLog.date)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      jumpToLogDate(weightLog.date)
+                    }
+                  }}
+                  className="rounded-2xl border border-gray-100 p-4 outline-none transition hover:border-indigo-200 hover:bg-indigo-50"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-gray-900">
+                      {logDate.toLocaleDateString(i18n.language === 'ko' ? 'ko-KR' : 'en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </p>
+                    <span className="text-xs uppercase tracking-wide text-gray-500">weight</span>
+                  </div>
+                  <p className="mt-2 text-gray-600">
+                    {`${t('healthLog.weight')}: ${weightLog.weight}kg`}
+                    {weightLog.notes ? ` · ${weightLog.notes}` : ''}
+                  </p>
+                </div>
+              )
+            }
+
+            const log = entry.log
             const logDate = new Date(log.timestamp)
             const parts: string[] = []
             if (log.wetFoodAmount) parts.push(`${t('nutrition.foodLabels.wet')} ${log.wetFoodAmount}g`)
@@ -1399,11 +1485,56 @@ function DashboardModern() {
         </div>
       </section>
 
+      {selectedCat && (
+        <section className="rounded-3xl bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-500">{t('dashboard.weightHistoryTitle')}</p>
+              <p className="text-sm text-gray-400">
+                {latestWeightLog
+                  ? lang === 'ko'
+                    ? `마지막 기록: ${latestWeightLog.weight}kg · ${new Date(latestWeightLog.timestamp).toLocaleDateString('ko-KR')}`
+                    : `Last entry: ${latestWeightLog.weight}kg · ${new Date(latestWeightLog.timestamp).toLocaleDateString('en-US')}`
+                  : t('dashboard.weightHistoryEmpty')}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 space-y-3 text-sm text-gray-600">
+            {weightHistory.length === 0 && (
+              <p className="text-gray-500">{t('dashboard.weightHistoryEmpty')}</p>
+            )}
+            {weightHistory
+              .slice()
+              .sort((a, b) => b.timestamp - a.timestamp)
+              .map((log) => (
+                <div key={`history-${log.id}`} className="rounded-2xl border border-gray-100 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-gray-900">
+                      {new Date(log.timestamp).toLocaleDateString(i18n.language === 'ko' ? 'ko-KR' : 'en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </p>
+                    <span className="text-xs uppercase tracking-wide text-gray-500">{t('healthLog.weight')}</span>
+                  </div>
+                  <p className="mt-2 text-gray-600">
+                    {log.weight}kg{log.notes ? ` · ${log.notes}` : ''}
+                  </p>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+
       {showWeightLogger && selectedCat && (
         <WeightLogger
           catId={selectedCat.id}
-          currentWeight={selectedCat.weight}
-          onSave={(log: WeightLog) => addWeightLog(log)}
+          currentWeight={baselineWeight || selectedCat.weight}
+          onSave={(log: WeightLog) => {
+            addWeightLog(log)
+            updateCat(selectedCat.id, { weight: log.weight })
+          }}
           onClose={() => setShowWeightLogger(false)}
         />
       )}
