@@ -56,6 +56,23 @@ You can verify with `git remote -v`.
 ## 5) Optional: open a Pull Request
 If both branches exist on GitHub, open a PR from `work` into `main` to review and merge the cleanup safely.
 
+## 6) Confirm `main` actually has the cleanup
+After merging or fast-forwarding, double-check locally and on GitHub:
+
+```bash
+# Verify locally that main points to the same commit as work
+git checkout main
+git log --oneline -1        # note the top commit hash
+git checkout work
+git log --oneline -1        # hashes should match if main == work
+
+# If you already pushed, confirm the remote main matches
+git fetch origin
+git log --oneline origin/main | head -n 1  # should match the hash above
+```
+
+On GitHub, open the **main** branch and ensure the latest commit message matches what you expect (for example, "Clean repository artifacts and improve ignore rules").
+
 ## Quick checklist
 - [ ] You are on the branch you expect (`git status -sb`).
 - [ ] `git branch -vv` shows `main` pointing to the same commit as `work` if you want them to match.
