@@ -14,6 +14,16 @@ Your branch is up to date with 'origin/main'.
 
 it means you are on a branch named `main` that differs from the cleanup changes on `work`, or `main` may not exist locally yet. Use the steps below to view the cleanup, align branches, and push to GitHub.
 
+> ✅ Quick answer for the GitHub branches screen you shared: push `work` to the remote and open a PR into `main`.
+>
+> ```bash
+> git remote add origin <YOUR_REPO_URL>   # only if origin is missing
+> git push -u origin work                 # make the cleaned branch visible
+> # then open a Pull Request from work -> main on GitHub and merge it
+> ```
+
+The detailed steps below explain how to verify branches and avoid force pushes.
+
 ## 1) Verify your current branch and available branches
 ```
 $ git status -sb
