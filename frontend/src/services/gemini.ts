@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getRelevantKnowledge, VetKnowledge, vetKnowledgeBase } from './vetKnowledge';
+import { getRelevantKnowledge, VetKnowledge } from './vetKnowledge';
 import { HealthAnomaly } from '../types';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -12,9 +12,6 @@ const genAI = new GoogleGenerativeAI(apiKey || '');
 
 const MODEL_NAME = 'gemini-2.5-flash';
 const RECENT_MESSAGE_LIMIT = 10;
-
-const normalizeSourceText = (value?: string) =>
-  value?.toLowerCase().replace(/[^a-z0-9가-힣]/g, '') || '';
 
 // Helper: Summarize old conversations to manage context
 const summarizeConversation = async (
@@ -442,24 +439,6 @@ Response:
         });
       });
     }
-
-    // Attempt to enrich sources with known URLs when missing
-    sources.forEach((source) => {
-      if (source.url) return;
-      const normalizedContent = normalizeSourceText(source.content);
-      const normalizedDate = normalizeSourceText(source.date);
-      const match = vetKnowledgeBase.find((knowledge) => {
-        const en = normalizeSourceText(knowledge.source.en);
-        const ko = normalizeSourceText(knowledge.source.ko);
-        return (
-          (!!normalizedContent && (en.includes(normalizedContent) || ko.includes(normalizedContent))) ||
-          (!!normalizedDate && (en.includes(normalizedDate) || ko.includes(normalizedDate)))
-        );
-      });
-      if (match?.source.url) {
-        source.url = match.source.url;
-      }
-    });
 
     if (sources.length === 0 && relevantKnowledge.length > 0) {
       relevantKnowledge.forEach((knowledge) => {

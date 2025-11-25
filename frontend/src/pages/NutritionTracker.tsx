@@ -3,16 +3,15 @@ import { useTranslation } from 'react-i18next'
 import { useCatStore } from '../store/catStore'
 import { useHealthStore } from '../store/healthStore'
 import WeightChart from '../components/WeightChart'
+import { HealthLog } from '../types'
 import { findBrandCalories } from '../data/foodBrands'
-import { calculateDER, calculateRecommendedWater } from '../utils/calorieCalculator'
-
-const getGoalsStorageKey = (catId?: string) => (catId ? `nutritionGoals-${catId}` : 'nutritionGoals')
 
 function NutritionTracker() {
   const { t, i18n } = useTranslation()
   const { selectedCat } = useCatStore()
-  const { getRecentLogs, loadWeightLogs, getWeightLogs } = useHealthStore()
+  const { getRecentLogs, addHealthLog, loadWeightLogs, getWeightLogs } = useHealthStore()
 
+  const [showMealModal, setShowMealModal] = useState(false)
   const [brandInfo, setBrandInfo] = useState({
     wet: 'Gourmet Pate',
     dry: 'Premium Cat Kibble',
@@ -32,8 +31,20 @@ function NutritionTracker() {
     treatBrand: '',
     treatCalories: 320,
   })
+  const [formData, setFormData] = useState({
+    time: new Date().toTimeString().slice(0, 5),
+    wetFoodAmount: '',
+    dryFoodAmount: '',
+    snackAmount: '',
+    waterAmount: '',
+    notes: '',
+  })
   type NutritionGoals = { calories: number; water: number }
-  const [nutritionGoals, setNutritionGoals] = useState<NutritionGoals>({ calories: 250, water: 200 })
+  const [nutritionGoals, setNutritionGoals] = useState<NutritionGoals>(() => {
+    const stored = localStorage.getItem('nutritionGoals')
+    if (stored) return JSON.parse(stored)
+    return { calories: 250, water: 200 }
+  })
   const [showGoalEditor, setShowGoalEditor] = useState(false)
   const [goalDraft, setGoalDraft] = useState<NutritionGoals>(nutritionGoals)
 
@@ -44,27 +55,8 @@ function NutritionTracker() {
   }, [selectedCat, loadWeightLogs])
 
   useEffect(() => {
-    if (!selectedCat) return
-    const key = getGoalsStorageKey(selectedCat.id)
-    const stored = localStorage.getItem(key)
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      setNutritionGoals(parsed)
-      setGoalDraft(parsed)
-    } else if (selectedCat.weight) {
-      const derived = {
-        calories: calculateDER(selectedCat.weight, selectedCat.neutered ?? true),
-        water: calculateRecommendedWater(selectedCat.weight),
-      }
-      setNutritionGoals(derived)
-      setGoalDraft(derived)
-    }
-  }, [selectedCat])
-
-  useEffect(() => {
-    const key = getGoalsStorageKey(selectedCat?.id)
-    localStorage.setItem(key, JSON.stringify(nutritionGoals))
-  }, [nutritionGoals, selectedCat])
+    localStorage.setItem('nutritionGoals', JSON.stringify(nutritionGoals))
+  }, [nutritionGoals])
 
   const weightLogs = selectedCat ? getWeightLogs(selectedCat.id) : []
   const catLogs = selectedCat ? getRecentLogs(selectedCat.id, 90) : []
@@ -214,6 +206,35 @@ function NutritionTracker() {
     return insights
   }, [summary, todaysLogs, t, waterGoal, selectedCat, i18n.language])
 
+  const handleMealSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedCat) return
+    const now = new Date()
+    const log: HealthLog = {
+      id: crypto.randomUUID(),
+      catId: selectedCat.id,
+      date: todayStr,
+      time: formData.time || now.toTimeString().slice(0, 5),
+      timestamp: now.getTime(),
+      type: 'meal',
+      wetFoodAmount: formData.wetFoodAmount ? Number(formData.wetFoodAmount) : undefined,
+      dryFoodAmount: formData.dryFoodAmount ? Number(formData.dryFoodAmount) : undefined,
+      snackAmount: formData.snackAmount ? Number(formData.snackAmount) : undefined,
+      waterAmount: formData.waterAmount ? Number(formData.waterAmount) : undefined,
+      notes: formData.notes,
+    }
+    addHealthLog(log)
+    setShowMealModal(false)
+    setFormData({
+      time: new Date().toTimeString().slice(0, 5),
+      wetFoodAmount: '',
+      dryFoodAmount: '',
+      snackAmount: '',
+      waterAmount: '',
+      notes: '',
+    })
+  }
+
   const saveFoodInfo = () => {
     setBrandInfo({
       wet: foodForm.wetBrand,
@@ -247,6 +268,12 @@ function NutritionTracker() {
           <p className="text-sm font-semibold uppercase tracking-wide text-indigo-600">{t('nutrition.title')}</p>
           <h1 className="mt-1 text-3xl font-bold text-gray-900">{t('nutrition.subtitle')}</h1>
         </div>
+        <button
+          onClick={() => setShowMealModal(true)}
+          className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700"
+        >
+          + {t('nutrition.logMeal')}
+        </button>
       </header>
 
       <section className="grid gap-6 lg:grid-cols-3">
@@ -407,6 +434,129 @@ function NutritionTracker() {
           </div>
         </div>
       </section>
+
+      <section className="rounded-3xl bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-500">{t('nutrition.mealsTitle')}</p>
+            <p className="text-sm text-gray-400">{t('nutrition.mealsDescription')}</p>
+          </div>
+          <button
+            onClick={() => setShowMealModal(true)}
+            className="rounded-2xl border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 hover:border-indigo-200 hover:text-indigo-600"
+          >
+            + {t('nutrition.logMeal')}
+          </button>
+        </div>
+
+        <div className="mt-6 space-y-4">
+          {todaysLogs.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+              {t('nutrition.mealsEmpty')}
+            </div>
+          )}
+          {todaysLogs.map((log) => (
+            <div key={log.id} className="flex flex-col gap-3 rounded-2xl border border-gray-100 p-4 text-sm text-gray-600 sm:flex-row sm:items-center">
+              <div className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-semibold text-gray-700">{log.time}</div>
+              <div className="flex-1">
+                <p className="font-semibold text-gray-900">
+                  {(log.wetFoodAmount || 0) + (log.dryFoodAmount || 0) > 0
+                    ? `${(log.wetFoodAmount || 0) + (log.dryFoodAmount || 0)} g`
+                    : log.waterAmount
+                    ? `${log.waterAmount} ml`
+                    : t('nutrition.seeDetails')}
+                </p>
+                {log.notes && <p className="text-xs text-gray-500">{log.notes}</p>}
+              </div>
+              <span className="text-xs text-gray-400">{t('nutrition.seeDetails')}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {showMealModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-semibold text-gray-900">{t('nutrition.logMeal')}</h3>
+            <form onSubmit={handleMealSubmit} className="mt-4 space-y-3 text-sm text-gray-600">
+              <div>
+                <label className="text-xs uppercase tracking-wide text-gray-400">Time</label>
+                <input
+                  type="time"
+                  value={formData.time}
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                  className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
+                  required
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-gray-400">Wet Food (g)</label>
+                  <input
+                    type="number"
+                    value={formData.wetFoodAmount}
+                    onChange={(e) => setFormData({ ...formData, wetFoodAmount: e.target.value })}
+                    className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-gray-400">Dry Food (g)</label>
+                  <input
+                    type="number"
+                    value={formData.dryFoodAmount}
+                    onChange={(e) => setFormData({ ...formData, dryFoodAmount: e.target.value })}
+                    className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-gray-400">Snack (g)</label>
+                  <input
+                    type="number"
+                    value={formData.snackAmount}
+                    onChange={(e) => setFormData({ ...formData, snackAmount: e.target.value })}
+                    className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wide text-gray-400">Water (ml)</label>
+                  <input
+                    type="number"
+                    value={formData.waterAmount}
+                    onChange={(e) => setFormData({ ...formData, waterAmount: e.target.value })}
+                    className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-wide text-gray-400">Notes</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowMealModal(false)}
+                  className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600"
+                >
+                  {t('catProfile.cancel')}
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white"
+                >
+                  {t('catProfile.save')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showFoodSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

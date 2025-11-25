@@ -68,7 +68,6 @@ function HealthRecords() {
     vetVisits,
     addVetVisit,
     deleteVetVisit,
-    loadHealthLogs,
   } = useHealthStore()
 
   const [medications, setMedications] = useState<Medication[]>(defaultMedications)
@@ -91,14 +90,13 @@ function HealthRecords() {
 
   useEffect(() => {
     if (selectedCat) {
-      loadHealthLogs(selectedCat.id)
       loadSymptoms(selectedCat.id)
       loadVetVisits(selectedCat.id)
       setMedications(loadMedicationsForCat(selectedCat.id))
     } else {
       setMedications(defaultMedications)
     }
-  }, [selectedCat, loadSymptoms, loadVetVisits, loadHealthLogs])
+  }, [selectedCat, loadSymptoms, loadVetVisits])
 
   useEffect(() => {
     if (selectedCat) {

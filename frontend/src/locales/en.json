@@ -46,7 +46,6 @@
     "quickActionsPlayToys": "Play (Toys)",
     "quickActionsPlayWheel": "Cat Wheel",
     "quickActionsBrushTeeth": "Toothbrush",
-    "quickActionsPlay": "Play",
     "detailEntry": "Detailed Entry",
     "aiChat": "Ask AI Vet",
     "aiSummary": {
@@ -78,12 +77,6 @@
     "appointmentSave": "Save appointment",
     "upcomingAppointments": "Upcoming visits",
     "appointmentEmpty": "No appointments scheduled.",
-    "playModalTitle": "Log play session",
-    "playModalDescription": "Choose the activity type and minutes played.",
-    "playModalDuration": "Duration (minutes)",
-    "playMenuTitle": "Choose activity",
-    "weightHistoryTitle": "Weight History",
-    "weightHistoryEmpty": "No weight logs recorded yet.",
     "stats": {
       "nextCheckup": "Next Checkup",
       "medications": "Medications",

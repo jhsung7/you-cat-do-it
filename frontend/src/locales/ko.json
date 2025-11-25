@@ -46,7 +46,6 @@
     "quickActionsPlayToys": "놀이 (장난감)",
     "quickActionsPlayWheel": "러닝휠",
     "quickActionsBrushTeeth": "칫솔질",
-    "quickActionsPlay": "놀이",
     "detailEntry": "상세 입력",
     "aiChat": "AI 상담하기",
     "aiSummary": {
@@ -78,12 +77,6 @@
     "appointmentSave": "예약 저장",
     "upcomingAppointments": "다가오는 예약",
     "appointmentEmpty": "등록된 예약이 없습니다.",
-    "playModalTitle": "놀이 기록",
-    "playModalDescription": "활동 종류와 시간을 선택하세요.",
-    "playModalDuration": "놀이 시간(분)",
-    "playMenuTitle": "활동 선택",
-    "weightHistoryTitle": "체중 기록",
-    "weightHistoryEmpty": "아직 저장된 체중 기록이 없습니다.",
     "stats": {
       "nextCheckup": "다음 건강검진",
       "medications": "복용 중",
