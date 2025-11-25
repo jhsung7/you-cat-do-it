@@ -2,6 +2,10 @@
 
 Completed improvements to the Cat Health tracking application based on the comprehensive analysis.
 
+> ℹ️ **Where to see the recent cleanup**
+>
+> The latest maintenance changes (removing generated assets and adding a repository-wide `.gitignore`) live on the current `work` branch. Pull or switch to this branch on GitHub to view the updated tree without the previously committed build and `node_modules` artifacts.
+
 ## ✅ COMPLETED (Tasks 1-8)
 
 ### 1. ✔️ **Backend API Proxy for Security** (CRITICAL)
