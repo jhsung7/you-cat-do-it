@@ -1,0 +1,36 @@
+# Render 풀스택 배포 설정 (프론트엔드 + 백엔드)
+
+services:
+  # 백엔드 API 서버
+  - type: web
+    name: cat-health-backend
+    env: node
+    region: virginia  
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # GEMINI_API_KEY와 FRONTEND_URL은 대시보드에서 수동 설정
+    rootDir: backend
+
+  # 프론트엔드 정적 사이트
+  - type: web
+    name: cat-health-frontend
+    env: static
+    region: singapore
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://cat-health-backend.onrender.com
+    rootDir: frontend
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
