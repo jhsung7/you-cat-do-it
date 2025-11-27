@@ -195,7 +195,10 @@ function AIChat() {
         reasoning: response.reasoning,
         confidence: response.confidence,
         followUpQuestions: response.followUpQuestions,
-        sources: response.sources,
+        sources: response.sources?.map((src) => ({
+          ...src,
+          url: src.url || `https://www.google.com/search?q=${encodeURIComponent(src.content)}`,
+        })),
       };
 
       setMessages(prev => {

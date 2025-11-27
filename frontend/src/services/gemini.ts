@@ -3,12 +3,16 @@ import { getRelevantKnowledge, VetKnowledge } from './vetKnowledge';
 import { HealthAnomaly } from '../types';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+const logDebug = (...args: unknown[]) => {
+  if (import.meta.env.DEV) {
+    console.debug(...args);
+  }
+};
 
-if (!apiKey) {
-  console.error('⚠️ Gemini API key is missing!');
+if (!apiKey && import.meta.env.DEV) {
+  console.warn('⚠️ Gemini API key is missing; using offline fallbacks.');
 }
-
-const genAI = new GoogleGenerativeAI(apiKey || '');
 
 const MODEL_NAME = 'gemini-2.5-flash';
 const RECENT_MESSAGE_LIMIT = 10;
@@ -18,10 +22,9 @@ const summarizeConversation = async (
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   language: 'ko' | 'en'
 ): Promise<string | null> => {
-  if (messages.length <= RECENT_MESSAGE_LIMIT) return null;
+  if (messages.length <= RECENT_MESSAGE_LIMIT || !genAI) return null;
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey || '');
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     const oldMessages = messages.slice(0, messages.length - RECENT_MESSAGE_LIMIT);
@@ -93,19 +96,54 @@ const simpleVoiceParser = (voiceInput: string, language: 'ko' | 'en') => {
   const lowered = voiceInput.toLowerCase()
   const result: any = { success: true, notes: voiceInput }
 
-  const foodKeywords = language === 'ko' ? ['밥', '사료', '먹었'] : ['ate', 'food', 'meal', 'feed']
-  if (foodKeywords.some((kw) => lowered.includes(kw))) {
+  const hasAny = (words: string[]) => words.some((kw) => lowered.includes(kw))
+
+  // Meals & snacks (phrase-level)
+  const mealWords = language === 'ko' ? ['밥', '사료', '먹였', '먹었', '식사', '밥먹었어', '밥 줬어'] : ['ate', 'feed', 'fed', 'meal', 'breakfast', 'dinner', 'lunch']
+  const wetWords = language === 'ko' ? ['습식', '파우치', '캔'] : ['wet', 'pouch', 'can']
+  const dryWords = language === 'ko' ? ['건식', '키블', '건사료'] : ['dry', 'kibble']
+  const treatWords = language === 'ko' ? ['간식', '츄르', '트릿'] : ['treat', 'snack', 'churu']
+
+  if (hasAny(treatWords)) {
+    result.snackAmount = parseTextNumber(lowered, language, 10)
+    result.snackType = language === 'ko' ? '간식' : 'treat'
+  } else if (hasAny(wetWords)) {
+    result.wetFoodAmount = parseTextNumber(lowered, language, 50)
+  } else if (hasAny(dryWords)) {
+    result.dryFoodAmount = parseTextNumber(lowered, language, 30)
+  } else if (hasAny(mealWords)) {
     result.foodAmount = parseTextNumber(lowered, language, 50)
   }
 
-  const waterKeywords = language === 'ko' ? ['물', '마셨', '수분'] : ['drink', 'drank', 'water']
-  if (waterKeywords.some((kw) => lowered.includes(kw))) {
+  // Water
+  const waterKeywords = language === 'ko' ? ['물', '마셨', '수분', '마셔'] : ['drink', 'drank', 'water', 'hydrate']
+  if (hasAny(waterKeywords)) {
     result.waterAmount = parseTextNumber(lowered, language, 50)
   }
 
-  const litterKeywords = language === 'ko' ? ['화장실', '똥', '응가'] : ['litter', 'poop', 'bathroom']
-  if (litterKeywords.some((kw) => lowered.includes(kw))) {
+  // Litter
+  const peeWords = language === 'ko' ? ['소변', '오줌', '쉬', '소변봤'] : ['pee', 'urine', 'peepee']
+  const poopWords = language === 'ko' ? ['대변', '응가', '똥', '변봤'] : ['poop', 'poo', 'stool', 'bowel']
+  const litterKeywords = [...peeWords, ...poopWords, ...(language === 'ko' ? ['화장실'] : ['litter', 'bathroom', 'toilet'])]
+  if (hasAny(litterKeywords)) {
     result.litterCount = parseTextNumber(lowered, language, 1)
+  }
+
+  // Play
+  const wheelWords = language === 'ko' ? ['휠', '러닝휠', '러닝 휠'] : ['wheel', 'runner']
+  const toyWords = language === 'ko' ? ['놀이', '놀았', '장난감', '공', '낚싯대'] : ['play', 'toy', 'ball', 'string', 'wand']
+  if (hasAny(wheelWords)) {
+    result.playType = 'catWheel'
+    result.playDurationMinutes = parseTextNumber(lowered, language, 10)
+  } else if (hasAny(toyWords)) {
+    result.playType = 'toys'
+    result.playDurationMinutes = parseTextNumber(lowered, language, 10)
+  }
+
+  // Brushing
+  const brushWords = language === 'ko' ? ['칫솔', '치석', '양치', '치약'] : ['brush', 'tooth', 'teeth', 'dental']
+  if (hasAny(brushWords)) {
+    result.brushedTeeth = true
   }
 
   const symptomMap: Record<string, { type: string; severity: 'mild' | 'moderate' | 'severe' }> = language === 'ko'
@@ -116,6 +154,8 @@ const simpleVoiceParser = (voiceInput: string, language: 'ko' | 'en') => {
         '기침': { type: '기침', severity: 'mild' },
         '재채기': { type: '재채기', severity: 'mild' },
         '무기력': { type: '무기력', severity: 'moderate' },
+        '안 먹': { type: '식욕부진', severity: 'moderate' },
+        '먹질 않': { type: '식욕부진', severity: 'moderate' },
       }
     : {
         'vomit': { type: 'vomit', severity: 'moderate' },
@@ -124,6 +164,12 @@ const simpleVoiceParser = (voiceInput: string, language: 'ko' | 'en') => {
         'cough': { type: 'cough', severity: 'mild' },
         'sneeze': { type: 'sneeze', severity: 'mild' },
         'letharg': { type: 'lethargy', severity: 'moderate' },
+        'not eating': { type: 'appetite loss', severity: 'moderate' },
+        'refus': { type: 'appetite loss', severity: 'moderate' },
+        'no appetite': { type: 'appetite loss', severity: 'moderate' },
+        'breath': { type: 'breathing issue', severity: 'severe' },
+        'wheez': { type: 'breathing issue', severity: 'severe' },
+        'pant': { type: 'breathing issue', severity: 'severe' },
       }
 
   for (const keyword in symptomMap) {
@@ -185,11 +231,11 @@ export const chatWithAI = async (
   reasoning?: string;
   confidence?: 'high' | 'medium' | 'low';
   followUpQuestions: string[];
-  sources: Array<{ type: string; date?: string; content: string }>;
+  sources: Array<{ type: string; date?: string; content: string; url?: string }>;
 }> => {
   const relevantKnowledge = getRelevantKnowledge(userMessage, language, 2);
   try {
-    if (!apiKey) {
+    if (!apiKey || !genAI) {
       return buildFallbackResponse(catProfile, relevantKnowledge, language)
     }
 
@@ -410,7 +456,7 @@ Response:
       ? `사용자 질문: ${userMessage}\n\n위 JSON 형식으로 답변해주세요.`
       : `User question: ${userMessage}\n\nRespond in the JSON format above.`;
 
-    console.log('🤖 Sending to Gemini 2.5 Flash...');
+    logDebug('🤖 Sending to Gemini 2.5 Flash...');
     const result = await model.generateContent(contextPrompt);
     const response = result.response;
     let text = response.text().trim();
@@ -423,9 +469,9 @@ Response:
     }
 
     const parsed = JSON.parse(text);
-    console.log('✅ Gemini response received');
-    console.log('🧠 Reasoning:', parsed.reasoning);
-    console.log('📊 Confidence:', parsed.confidence);
+    logDebug('✅ Gemini response received');
+    logDebug('🧠 Reasoning:', parsed.reasoning);
+    logDebug('📊 Confidence:', parsed.confidence);
 
     // 출처 변환 (논문/가이드라인 형식)
     const sources: Array<{ type: string; date?: string; content: string; url?: string }> = [];
@@ -471,7 +517,7 @@ export const analyzeSymptoms = async (
 ) => {
   const fallback = symptomFallback(symptoms, language)
   try {
-    if (!apiKey) {
+    if (!apiKey || !genAI) {
       return fallback
     }
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
@@ -547,11 +593,18 @@ export const parseHealthLogFromVoice = async (
   catName: string,
   language: 'ko' | 'en' = 'ko'
 ): Promise<{
+  wetFoodAmount?: number;
+  dryFoodAmount?: number;
+  snackAmount?: number;
+  snackType?: string;
   foodAmount?: number;
   waterAmount?: number;
   litterCount?: number;
   activityLevel?: 'active' | 'normal' | 'lazy';
   mood?: 'happy' | 'normal' | 'sad' | 'angry';
+  playType?: 'toys' | 'catWheel';
+  playDurationMinutes?: number;
+  brushedTeeth?: boolean;
   notes?: string;
   symptom?: {
     type: string;
@@ -562,7 +615,7 @@ export const parseHealthLogFromVoice = async (
   message?: string;
 }> => {
   try {
-    if (!apiKey) {
+    if (!apiKey || !genAI) {
       return simpleVoiceParser(voiceInput, language)
     }
 
@@ -646,7 +699,7 @@ JSON response format:
 - Omit fields with no data
 `;
 
-    console.log('🤖 Parsing voice input with Gemini...');
+    logDebug('🤖 Parsing voice input with Gemini...');
     const result = await model.generateContent(prompt);
     const response = result.response;
     let text = response.text().trim();
@@ -659,7 +712,7 @@ JSON response format:
     }
 
     const parsed = JSON.parse(text);
-    console.log('✅ Parsed data:', parsed);
+    logDebug('✅ Parsed data:', parsed);
 
     return {
       ...parsed,
@@ -679,6 +732,12 @@ export const generateDiary = async (
   language: 'ko' | 'en' = 'ko'
 ) => {
   try {
+    if (!genAI) {
+      return language === 'ko'
+        ? '오늘도 평범한 하루였다. 밥 먹고, 잠 자고, 집사를 귀찮게 했다. 😺'
+        : 'Another ordinary day. Ate, slept, annoyed my human. 😺';
+    }
+
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     const stylePrompts = {

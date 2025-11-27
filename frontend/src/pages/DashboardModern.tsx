@@ -301,6 +301,13 @@ function DashboardModern() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [showDetailedLog, setShowDetailedLog] = useState(false)
+  const [showPlayPicker, setShowPlayPicker] = useState(false)
+  const [showGroomingPicker, setShowGroomingPicker] = useState(false)
+  const [playSelection, setPlaySelection] = useState<{ type: 'toys' | 'catWheel'; duration: number }>({
+    type: 'toys',
+    duration: 15,
+  })
+  const [groomingType, setGroomingType] = useState<'teeth' | 'coat'>('teeth')
   const [detailedLogData, setDetailedLogData] = useState(createInitialDetailedLog())
   const [editingHealthLog, setEditingHealthLog] = useState<HealthLog | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -349,6 +356,8 @@ function DashboardModern() {
     }
     return base
   })
+  const [isSavingCat, setIsSavingCat] = useState(false)
+  const [catFormError, setCatFormError] = useState<string | null>(null)
 
   useEffect(() => {
     if (selectedCat) {
@@ -553,6 +562,8 @@ function DashboardModern() {
     addLog({
       type: 'meal',
       snackAmount: quickLogSettings.treatCount * 5,
+      snackCaloriesPer100g: quickLogSettings.treatCaloriesPer100g,
+      snackType: quickLogSettings.treatBrand || quickLogSettings.treatType,
       notes:
         i18n.language === 'ko'
           ? `${quickLogSettings.treatType} 간식`
@@ -659,10 +670,11 @@ function DashboardModern() {
     setTimeout(() => setVoiceMessage(''), 2500)
   }
 
-  const quickLogPlaySession = (mode: 'toys' | 'catWheel') => {
+  const quickLogPlaySession = (mode: 'toys' | 'catWheel', customDuration?: number) => {
     if (!ensureCatSelected()) return
     const duration =
-      mode === 'catWheel' ? quickLogSettings.playDurationWheel : quickLogSettings.playDurationToys
+      customDuration ??
+      (mode === 'catWheel' ? quickLogSettings.playDurationWheel : quickLogSettings.playDurationToys)
     addLog({
       type: 'play',
       playType: mode,
@@ -678,16 +690,20 @@ function DashboardModern() {
     })
   }
 
-  const quickLogBrushing = () => {
+  const quickLogBrushing = (mode: 'teeth' | 'coat' = 'teeth') => {
     if (!ensureCatSelected()) return
     addLog({
       type: 'grooming',
-      brushedTeeth: true,
-      dentalCareProduct: quickLogSettings.dentalProduct || undefined,
+      brushedTeeth: mode === 'teeth' ? true : undefined,
+      dentalCareProduct: mode === 'teeth' ? quickLogSettings.dentalProduct || undefined : undefined,
       notes:
-        i18n.language === 'ko'
-          ? '칫솔질 완료'
-          : 'Toothbrushing session logged',
+        mode === 'teeth'
+          ? i18n.language === 'ko'
+            ? '칫솔질 완료'
+            : 'Toothbrushing session logged'
+          : i18n.language === 'ko'
+          ? '털 손질 완료'
+          : 'Coat brushing session logged',
     })
   }
 
@@ -722,13 +738,54 @@ function DashboardModern() {
         setIsProcessing(false)
 
         if (parsed.success) {
+          const hasMetrics =
+            parsed.foodAmount ||
+            parsed.waterAmount ||
+            parsed.litterCount ||
+            parsed.mood ||
+            parsed.activityLevel ||
+            parsed.symptom
+
+          if (!hasMetrics) {
+            setVoiceMessage(
+              i18n.language === 'ko'
+                ? '❌ 음성에서 기록할 데이터를 찾지 못했습니다.'
+                : '❌ No actionable data detected from voice input.'
+            )
+            setTimeout(() => setVoiceMessage(''), 3000)
+            return
+          }
+
+          const mealDetected = Boolean(parsed.foodAmount || parsed.wetFoodAmount || parsed.dryFoodAmount || parsed.snackAmount)
+          const derivedType: HealthLog['type'] =
+            parsed.symptom
+              ? 'symptom'
+              : mealDetected
+              ? 'meal'
+              : parsed.waterAmount
+              ? 'water'
+              : parsed.litterCount
+              ? 'litter'
+              : parsed.playDurationMinutes
+              ? 'play'
+              : parsed.brushedTeeth
+              ? 'grooming'
+              : 'general'
+
           addLog({
-            type: 'general',
+            type: derivedType,
             foodAmount: parsed.foodAmount,
+            wetFoodAmount: parsed.wetFoodAmount,
+            dryFoodAmount: parsed.dryFoodAmount,
+            snackAmount: parsed.snackAmount,
+            snackType: parsed.snackType,
             waterAmount: parsed.waterAmount,
             litterCount: parsed.litterCount,
             activityLevel: parsed.activityLevel || 'normal',
             mood: parsed.mood || 'normal',
+            playType: parsed.playType,
+            playDurationMinutes: parsed.playDurationMinutes,
+            brushedTeeth: parsed.brushedTeeth,
             notes: parsed.notes || transcript,
           })
 
@@ -757,6 +814,7 @@ function DashboardModern() {
       },
       (error) => {
         setIsListening(false)
+        setIsProcessing(false)
         setVoiceMessage(error)
         setTimeout(() => setVoiceMessage(''), 3000)
       }
@@ -764,6 +822,12 @@ function DashboardModern() {
 
     // expose to stop button
     ;(window as any).__voiceRecognition = recognition
+
+    // 브라우저 미지원 시 빠르게 종료
+    if (!recognition) {
+      setIsListening(false)
+      setIsProcessing(false)
+    }
   }
 
   const handleStopListening = () => {
@@ -777,11 +841,8 @@ function DashboardModern() {
   const syncModalParam = (value?: 'addCat' | 'editCat') => {
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev)
-      if (value) {
-        params.set('modal', value)
-      } else {
-        params.delete('modal')
-      }
+      if (value) params.set('modal', value)
+      else params.delete('modal')
       return params
     })
   }
@@ -809,39 +870,59 @@ function DashboardModern() {
     }
   }
 
-  const handleCatFormSubmit = async (e: React.FormEvent) => {
+  const handleCatFormSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (editingCatId) {
-      updateCat(editingCatId, {
-        name: catFormData.name,
-        breed: catFormData.breed,
+    if (isSavingCat) return
+    setIsSavingCat(true)
+    setCatFormError(null)
+
+    try {
+      const weightNumber = Number(catFormData.weight)
+      if (!catFormData.name.trim() || !catFormData.birthDate || Number.isNaN(weightNumber) || weightNumber <= 0) {
+        setCatFormError(i18n.language === 'ko' ? '필수 정보를 올바르게 입력하세요.' : 'Please fill required fields correctly.')
+        return
+      }
+      // base64는 4/3로 부풀어 오르므로 ~1MB 원본 ≈ 1.4MB 길이
+      if (catFormData.imageUrl && catFormData.imageUrl.startsWith('data:image') && catFormData.imageUrl.length > 1_400_000) {
+        setCatFormError(
+          i18n.language === 'ko'
+            ? '이미지가 너무 큽니다. 1MB 이하로 줄여주세요.'
+            : 'Image data is too large. Please use an image under 1MB.'
+        )
+        return
+      }
+
+      const payload = {
+        name: catFormData.name.trim(),
+        breed: catFormData.breed.trim(),
         birthDate: catFormData.birthDate,
-        weight: Number(catFormData.weight),
+        weight: weightNumber,
         gender: catFormData.gender,
         neutered: catFormData.neutered,
         chronicConditions: catFormData.chronicConditions
           ? catFormData.chronicConditions.split(',').map((c) => c.trim()).filter(Boolean)
           : undefined,
         imageUrl: catFormData.imageUrl || undefined,
-      })
-    } else {
-      addCat({
-        name: catFormData.name,
-        breed: catFormData.breed,
-        birthDate: catFormData.birthDate,
-        weight: Number(catFormData.weight),
-        gender: catFormData.gender,
-        neutered: catFormData.neutered,
-        chronicConditions: catFormData.chronicConditions
-          ? catFormData.chronicConditions.split(',').map((c) => c.trim()).filter(Boolean)
-          : undefined,
-        imageUrl: catFormData.imageUrl || undefined,
-      })
+      }
+
+      if (editingCatId) {
+        updateCat(editingCatId, payload)
+      } else {
+        addCat(payload)
+      }
+
+      setShowCatModal(false)
+      setEditingCatId(null)
+      setCatFormData(initialCatForm)
+      syncModalParam(undefined)
+      setVoiceMessage(i18n.language === 'ko' ? '프로필이 저장되었습니다.' : 'Profile saved.')
+      setTimeout(() => setVoiceMessage(''), 2500)
+    } catch (err) {
+      console.error('Cat save error', err)
+      setCatFormError(i18n.language === 'ko' ? '저장 중 오류가 발생했습니다.' : 'Failed to save profile.')
+    } finally {
+      setIsSavingCat(false)
     }
-    setShowCatModal(false)
-    setEditingCatId(null)
-    setCatFormData(initialCatForm)
-    syncModalParam(undefined)
   }
 
   const handleDeleteCatProfile = () => {
@@ -853,9 +934,20 @@ function DashboardModern() {
     syncModalParam(undefined)
   }
 
+  const MAX_IMAGE_BYTES = 1024 * 1024 // 1MB
+
   const handleCatFileChange = async (file: File | null) => {
     if (!file) return
+    if (file.size > MAX_IMAGE_BYTES) {
+      setCatFormError(
+        i18n.language === 'ko'
+          ? '이미지 용량이 1MB를 초과합니다. 더 작은 파일을 선택해주세요.'
+          : 'Image is over 1MB. Please choose a smaller file.'
+      )
+      return
+    }
     const base64 = await convertFileToBase64(file)
+    setCatFormError(null)
     setCatFormData((prev) => ({ ...prev, imageUrl: base64 }))
   }
 
@@ -1038,11 +1130,11 @@ function DashboardModern() {
       </header>
 
       {selectedCat && (
-        <section
-          className={`rounded-3xl border p-6 shadow-sm ${
-            aiSummary.mode === 'alert' ? 'border-rose-200 bg-rose-50' : 'border-indigo-100 bg-white'
-          }`}
-        >
+      <section
+        className={`rounded-3xl border p-6 shadow-sm ${
+          aiSummary.mode === 'alert' ? 'border-rose-200 bg-rose-50' : 'border-indigo-100 bg-white'
+        }`}
+      >
           <div className="flex items-start gap-4">
             <div
               className={`flex h-12 w-12 items-center justify-center rounded-2xl text-2xl ${
@@ -1084,63 +1176,75 @@ function DashboardModern() {
               ) : (
                 <p className="text-sm text-gray-500">{t('dashboard.aiSummary.empty')}</p>
               )}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {selectedCat && anomalies.length > 0 && (
-        <section className="rounded-3xl bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-gray-500">{i18n.language === 'ko' ? '건강 알림' : 'Health Alerts'}</p>
-              <p className="text-sm text-gray-400">
-                {i18n.language === 'ko' ? '최근 3일간 비정상 패턴이 감지되었습니다.' : 'Recent rolling-window anomalies detected.'}
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 space-y-3">
-            {anomalies.map((anomaly) => (
-              <div
-                key={anomaly.id}
-                className={`rounded-2xl border p-4 text-sm ${
-                  anomaly.severity === 'critical'
-                    ? 'border-red-200 bg-red-50 text-red-800'
-                    : 'border-amber-200 bg-amber-50 text-amber-900'
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-semibold uppercase text-xs tracking-wide">{anomalyMetricLabels[anomaly.metric]}</span>
-                  <span className="rounded-full border border-white/40 px-2 py-0.5 text-[11px] font-semibold">
-                    {anomaly.severity === 'critical'
-                      ? i18n.language === 'ko'
-                        ? '주의 요망'
-                        : 'Critical'
-                      : i18n.language === 'ko'
-                      ? '주의'
-                      : 'Warning'}
-                  </span>
+              {anomalies.length > 0 && (
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                      {i18n.language === 'ko' ? '건강 알림' : 'Health alerts'}
+                    </p>
+                    <span className="text-[11px] rounded-full bg-white/70 px-2 py-0.5 text-amber-700">
+                      {anomalies.length}
+                    </span>
+                  </div>
+                  <ul className="mt-2 space-y-2 text-sm text-amber-900">
+                    {anomalies.map((anomaly) => (
+                      <li
+                        key={anomaly.id}
+                        className="rounded-xl border border-amber-100 bg-white/60 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+                      >
+                        <div className="flex items-center justify-between text-xs font-semibold text-amber-800">
+                          <span>{anomalyMetricLabels[anomaly.metric]}</span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 ${
+                              anomaly.severity === 'critical'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+                            {anomaly.severity === 'critical'
+                              ? i18n.language === 'ko'
+                                ? '주의 요망'
+                                : 'Critical'
+                              : i18n.language === 'ko'
+                              ? '주의'
+                              : 'Warning'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[13px] leading-snug text-amber-900">{anomaly.description}</p>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <p className="mt-2 text-sm">{anomaly.description}</p>
-              </div>
-            ))}
+              )}
+            </div>
           </div>
         </section>
       )}
 
       <section className="rounded-3xl bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-gray-500">{t('dashboard.quickActionsTitle')}</p>
               <p className="text-sm text-gray-400">{t('dashboard.quickActionsDescription')}</p>
-            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowQuickSettings(true)}
               className="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600 hover:border-indigo-200 hover:text-indigo-600"
             >
               ⚙️ {t('dashboard.quickActionSettings')}
             </button>
+            <button
+              onClick={() => {
+                setDetailedLogData(createInitialDetailedLog())
+                setShowDetailedLog(true)
+              }}
+              className="inline-flex items-center rounded-full border border-purple-200 px-3 py-1 text-xs font-semibold text-purple-700 hover:border-purple-300"
+            >
+              📝 {i18n.language === 'ko' ? '상세 기록' : 'Detailed Log'}
+            </button>
           </div>
+        </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             <button
@@ -1163,7 +1267,7 @@ function DashboardModern() {
             </button>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4 flex flex-wrap items-start gap-3">
             <button
               onClick={() => setShowMoodModal(true)}
               className="rounded-2xl border border-yellow-200 px-4 py-3 text-sm font-semibold text-yellow-700"
@@ -1182,38 +1286,135 @@ function DashboardModern() {
             >
               💩 {i18n.language === 'ko' ? '대변' : 'Feces'}
             </button>
-            <button
-              onClick={quickLogBrushing}
-              className="rounded-2xl border border-green-200 px-4 py-3 text-sm font-semibold text-green-700"
-            >
-              🪥 {t('dashboard.quickActionsBrushTeeth')}
-            </button>
-            <button
-              onClick={() => quickLogPlaySession('toys')}
-              className="rounded-2xl border border-teal-200 px-4 py-3 text-sm font-semibold text-teal-700"
-            >
-              🎾 {t('dashboard.quickActionsPlayToys')}
-            </button>
-            <button
-              onClick={() => quickLogPlaySession('catWheel')}
-              className="rounded-2xl border border-emerald-200 px-4 py-3 text-sm font-semibold text-emerald-700"
-            >
-              🛞 {t('dashboard.quickActionsPlayWheel')}
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowGroomingPicker((prev) => !prev)}
+                className="rounded-2xl border border-green-200 px-4 py-3 text-sm font-semibold text-green-700"
+              >
+                🪒 {i18n.language === 'ko' ? '그루밍' : 'Grooming'}
+              </button>
+              {showGroomingPicker && (
+                <div className="absolute left-0 z-20 mt-2 w-56 rounded-2xl border border-green-100 bg-white p-3 shadow-xl">
+                  <p className="mb-2 text-sm font-semibold text-gray-800">
+                    {i18n.language === 'ko' ? '그루밍 유형' : 'Grooming type'}
+                  </p>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 'teeth' as const, label: i18n.language === 'ko' ? '칫솔질' : 'Teeth', icon: '🪥' },
+                      { value: 'coat' as const, label: i18n.language === 'ko' ? '털 브러시' : 'Coat', icon: '🧴' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => setGroomingType(option.value)}
+                        className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold ${
+                          groomingType === option.value
+                            ? 'border-green-400 bg-green-50 text-green-700'
+                            : 'border-gray-200 text-gray-600'
+                        }`}
+                      >
+                        {option.icon} {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowGroomingPicker(false)
+                      quickLogBrushing(groomingType)
+                    }}
+                    className="mt-3 w-full rounded-2xl bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                  >
+                    {i18n.language === 'ko' ? '기록하기' : 'Save'}
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setPlaySelection({
+                    type: 'toys',
+                    duration: quickLogSettings.playDurationToys,
+                  })
+                  setShowPlayPicker((prev) => !prev)
+                }}
+                className="rounded-2xl border border-teal-200 px-4 py-3 text-sm font-semibold text-teal-700"
+              >
+                🎣 {i18n.language === 'ko' ? '놀이 기록' : 'Play'}
+              </button>
+              {showPlayPicker && (
+                <div className="absolute left-0 z-20 mt-2 w-64 rounded-2xl border border-teal-100 bg-white p-4 shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-800">
+                      {i18n.language === 'ko' ? '놀이 유형' : 'Play type'}
+                    </p>
+                    <button
+                      onClick={() => setShowPlayPicker(false)}
+                      className="text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      ✖️
+                    </button>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    {[
+                      { value: 'toys' as const, label: i18n.language === 'ko' ? '장난감' : 'Toys', icon: '🎯' },
+                      { value: 'catWheel' as const, label: i18n.language === 'ko' ? '휠' : 'Wheel', icon: '🛞' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() =>
+                          setPlaySelection((prev) => ({
+                            ...prev,
+                            type: option.value,
+                            duration:
+                              option.value === 'catWheel'
+                                ? quickLogSettings.playDurationWheel
+                                : quickLogSettings.playDurationToys,
+                          }))
+                        }
+                        className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold ${
+                          playSelection.type === option.value
+                            ? 'border-teal-400 bg-teal-50 text-teal-700'
+                            : 'border-gray-200 text-gray-600'
+                        }`}
+                      >
+                        {option.icon} {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3">
+                    <label className="text-xs font-semibold text-gray-500">
+                      {i18n.language === 'ko' ? '시간(분)' : 'Minutes'}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
+                      value={playSelection.duration}
+                      onChange={(e) =>
+                        setPlaySelection((prev) => ({
+                          ...prev,
+                          duration: Number(e.target.value) || prev.duration,
+                        }))
+                      }
+                    />
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowPlayPicker(false)
+                      quickLogPlaySession(playSelection.type, playSelection.duration)
+                    }}
+                    className="mt-4 w-full rounded-2xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+                  >
+                    {i18n.language === 'ko' ? '기록하기' : 'Save play log'}
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowWeightLogger(true)}
               className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
             >
               ⚖️ {i18n.language === 'ko' ? '체중' : 'Weight'}
-            </button>
-            <button
-              onClick={() => {
-                setDetailedLogData(createInitialDetailedLog())
-                setShowDetailedLog(true)
-              }}
-              className="rounded-2xl border border-purple-200 px-4 py-3 text-sm font-semibold text-purple-700"
-            >
-              📝 {i18n.language === 'ko' ? '상세 기록' : 'Detailed Log'}
             </button>
             <button
               onClick={openMedicationManager}
@@ -1873,6 +2074,8 @@ function DashboardModern() {
                     onChange={(e) => setCatFormData((prev) => ({ ...prev, [field]: e.target.value }))}
                     className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
                     required
+                    min={field === 'weight' ? 0.1 : undefined}
+                    step={field === 'weight' ? 0.1 : undefined}
                   />
                 </div>
               ))}
@@ -1934,10 +2137,17 @@ function DashboardModern() {
                 >
                   {t('catProfile.cancel')}
                 </button>
-                <button type="submit" className="flex-1 rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white">
-                  {t('catProfile.save')}
+                <button
+                  type="submit"
+                  disabled={isSavingCat}
+                  className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white ${
+                    isSavingCat ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
+                >
+                  {isSavingCat ? (i18n.language === 'ko' ? '저장 중...' : 'Saving...') : t('catProfile.save')}
                 </button>
               </div>
+              {catFormError && <p className="text-sm text-red-600">{catFormError}</p>}
               {editingCatId && (
                 <button
                   type="button"

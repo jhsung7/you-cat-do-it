@@ -150,30 +150,35 @@ export function getDailySummary(
   dryFoodCaloriesPer100g: number = 375,
   snackCaloriesPer100g: number = 400
 ) {
-  const totalWetFood = dailyLogs.reduce((sum, log) => sum + (log.wetFoodAmount || 0), 0);
-  const totalDryFood = dailyLogs.reduce((sum, log) => sum + (log.dryFoodAmount || 0), 0);
-  const totalSnacks = dailyLogs.reduce((sum, log) => sum + (log.snackAmount || 0), 0);
-  const totalWater = dailyLogs.reduce((sum, log) => sum + (log.waterAmount || 0), 0);
+  const totals = dailyLogs.reduce(
+    (acc, log) => {
+      acc.wet += log.wetFoodAmount || 0
+      acc.dry += log.dryFoodAmount || 0
+      acc.snack += log.snackAmount || 0
+      acc.water += log.waterAmount || 0
 
-  const estimatedCalories = estimateFoodCalories(
-    totalWetFood,
-    totalDryFood,
-    totalSnacks,
-    wetFoodCaloriesPer100g,
-    dryFoodCaloriesPer100g,
-    snackCaloriesPer100g
-  );
+      // 간식 칼로리를 로그별 커스텀 kcal/100g 기준으로 반영
+      const snackCalPer100 = log.snackCaloriesPer100g || snackCaloriesPer100g
+      acc.snackCalories += (log.snackAmount || 0) * (snackCalPer100 / 100)
+      return acc
+    },
+    { wet: 0, dry: 0, snack: 0, water: 0, snackCalories: 0 }
+  )
+
+  const estimatedCalories =
+    estimateFoodCalories(totals.wet, totals.dry, 0, wetFoodCaloriesPer100g, dryFoodCaloriesPer100g, 0) +
+    Math.round(totals.snackCalories)
   const recommendedCalories = calculateDER(cat.weight, cat.neutered);
   const recommendedWater = calculateRecommendedWater(cat.weight);
 
   const calorieAnalysis = analyzeCalorieIntake(estimatedCalories, recommendedCalories);
-  const waterAnalysis = analyzeWaterIntake(totalWater, cat.weight);
+  const waterAnalysis = analyzeWaterIntake(totals.water, cat.weight);
 
   return {
-    totalWetFood,
-    totalDryFood,
-    totalSnacks,
-    totalWater,
+    totalWetFood: totals.wet,
+    totalDryFood: totals.dry,
+    totalSnacks: totals.snack,
+    totalWater: totals.water,
     estimatedCalories,
     recommendedCalories,
     recommendedWater,
