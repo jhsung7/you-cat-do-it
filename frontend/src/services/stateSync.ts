@@ -91,5 +91,5 @@ export const getStateEndpoint = () => stateUrl
 
 // expose for inline calls without import
 if (typeof window !== 'undefined') {
-  window.scheduleSharedStateSave = scheduleSharedStateSave
+  ;(window as any).scheduleSharedStateSave = scheduleSharedStateSave
 }
