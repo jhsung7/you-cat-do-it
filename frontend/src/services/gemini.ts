@@ -3,19 +3,45 @@ import { getRelevantKnowledge, VetKnowledge, vetKnowledgeBase } from './vetKnowl
 import { HealthAnomaly } from '../types';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+const proxyUrl = import.meta.env.VITE_GEMINI_PROXY_URL as string | undefined;
+const genAI = !proxyUrl && apiKey ? new GoogleGenerativeAI(apiKey) : null;
 const logDebug = (...args: unknown[]) => {
   if (import.meta.env.DEV) {
     console.debug(...args);
   }
 };
 
-if (!apiKey && import.meta.env.DEV) {
+if (!apiKey && !proxyUrl && import.meta.env.DEV) {
   console.warn('⚠️ Gemini API key is missing; using offline fallbacks.');
+}
+if (proxyUrl && import.meta.env.DEV) {
+  console.info(`ℹ️ Using Gemini proxy at ${proxyUrl}`);
 }
 
 type Embedding = number[];
 const knowledgeEmbeddings: { ko?: Record<string, Embedding>; en?: Record<string, Embedding> } = {};
+
+const generateText = async (prompt: string, modelName = MODEL_NAME): Promise<string> => {
+  // Prefer server proxy to keep API key on the backend
+  if (proxyUrl) {
+    const res = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, model: modelName }),
+    });
+    if (!res.ok) {
+      throw new Error(`Proxy request failed: ${res.status}`);
+    }
+    const data = await res.json();
+    const text = (data.text || data.response || data.result || '').toString().trim();
+    return text;
+  }
+
+  if (!genAI) throw new Error('Gemini client not initialized.');
+  const model = genAI.getGenerativeModel({ model: modelName });
+  const result = await model.generateContent(prompt);
+  return result.response.text().trim();
+};
 
 const embedText = async (text: string): Promise<Embedding | null> => {
   if (!genAI) return null;
@@ -81,18 +107,16 @@ const summarizeConversation = async (
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   language: 'ko' | 'en'
 ): Promise<string | null> => {
-  if (messages.length <= RECENT_MESSAGE_LIMIT || !genAI) return null;
+  if (messages.length <= RECENT_MESSAGE_LIMIT || (!genAI && !proxyUrl)) return null;
 
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-
     const oldMessages = messages.slice(0, messages.length - RECENT_MESSAGE_LIMIT);
     const summaryPrompt = language === 'ko'
       ? `다음 대화를 핵심 내용만 3-4줄로 요약하세요. 고양이 건강 관련 중요 정보(증상, 처방된 조언, 언급된 질환)만 포함:\n\n${oldMessages.map(m => `${m.role === 'user' ? '사용자' : '수의사'}: ${m.content}`).join('\n')}`
       : `Summarize this conversation in 3-4 lines, focusing only on key health information (symptoms, advice given, conditions mentioned):\n\n${oldMessages.map(m => `${m.role === 'user' ? 'User' : 'Vet'}: ${m.content}`).join('\n')}`;
 
-    const result = await model.generateContent(summaryPrompt);
-    return result.response.text().trim();
+    const text = await generateText(summaryPrompt);
+    return text;
   } catch (error) {
     console.error('Failed to summarize conversation:', error);
     return null;
@@ -331,11 +355,9 @@ export const chatWithAI = async (
 }> => {
   const relevantKnowledge = await getRelevantKnowledgeSmart(userMessage, language, 3);
   try {
-    if (!apiKey || !genAI) {
+    if (!apiKey && !proxyUrl) {
       return buildFallbackResponse(catProfile, relevantKnowledge, language)
     }
-
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     // Summarize old conversation if it's long
     const conversationSummary = conversationHistory && conversationHistory.length > RECENT_MESSAGE_LIMIT
@@ -559,9 +581,7 @@ Response:
       : `User question: ${userMessage}\n\nRespond in the JSON format above.`;
 
     logDebug('🤖 Sending to Gemini 2.5 Flash...');
-    const result = await model.generateContent(contextPrompt);
-    const response = result.response;
-    let text = response.text().trim();
+    let text = await generateText(contextPrompt);
 
     // JSON 추출
     if (text.includes('```json')) {
@@ -619,10 +639,9 @@ export const analyzeSymptoms = async (
 ) => {
   const fallback = symptomFallback(symptoms, language)
   try {
-    if (!apiKey || !genAI) {
+    if (!apiKey && !proxyUrl) {
       return fallback
     }
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     const prompt = language === 'ko'
       ? `당신은 고양이 전문 수의사입니다. 아래 증상을 분석하고 정확한 긴급도를 판단하세요.
@@ -666,9 +685,7 @@ Respond in JSON:
   "recommendations": ["Recommendation 1", "Recommendation 2"]
 }`;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    let text = response.text().trim();
+    let text = await generateText(prompt);
 
     // JSON 추출
     if (text.includes('```json')) {
@@ -717,11 +734,9 @@ export const parseHealthLogFromVoice = async (
   message?: string;
 }> => {
   try {
-    if (!apiKey || !genAI) {
+    if (!apiKey && !proxyUrl) {
       return simpleVoiceParser(voiceInput, language, catName)
     }
-
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     const prompt = language === 'ko' ? `
 고양이 "${catName}"에 대한 음성 입력을 분석하세요:
@@ -802,9 +817,7 @@ JSON response format:
 `;
 
     logDebug('🤖 Parsing voice input with Gemini...');
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    let text = response.text().trim();
+    let text = await generateText(prompt);
 
     // JSON 블록에서 추출
     if (text.includes('```json')) {
@@ -834,13 +847,11 @@ export const generateDiary = async (
   language: 'ko' | 'en' = 'ko'
 ) => {
   try {
-    if (!genAI) {
+    if (!genAI && !proxyUrl) {
       return language === 'ko'
         ? '오늘도 평범한 하루였다. 밥 먹고, 잠 자고, 집사를 귀찮게 했다. 😺'
         : 'Another ordinary day. Ate, slept, annoyed my human. 😺';
     }
-
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
     const stylePrompts = {
       ko: {
@@ -861,9 +872,8 @@ export const generateDiary = async (
       ? `${catProfile.name}의 오늘(${date}) 일기를 ${stylePrompts.ko[style]} 고양이 시점에서 100-150자로 작성해주세요. 이모지 1-2개 포함. 오늘: 사료 ${healthLog.foodAmount}g, 물 ${healthLog.waterAmount}ml, 기분 ${healthLog.mood}`
       : `Write a ${stylePrompts.en[style]} diary entry from ${catProfile.name}'s perspective for ${date} in 100-150 characters. Include 1-2 emojis. Today: Food ${healthLog.foodAmount}g, Water ${healthLog.waterAmount}ml, Mood ${healthLog.mood}`;
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    return response.text();
+    const text = await generateText(prompt);
+    return text;
   } catch (error) {
     console.error('Diary generation error:', error);
     return language === 'ko'

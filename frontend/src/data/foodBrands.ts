@@ -8,14 +8,14 @@ export interface FoodBrandData {
 }
 
 export const popularFoodBrands: FoodBrandData[] = [
-  // 습식 사료
+  // Wet food brands
   { name: "로얄캐닌 습식", wetCalories: 85 },
   { name: "힐스 습식", wetCalories: 82 },
   { name: "웰니스 코어 습식", wetCalories: 90 },
   { name: "아보덤 습식", wetCalories: 88 },
   { name: "자연주의 습식", wetCalories: 80 },
 
-  // 건식 사료
+  // Dry food brands
   { name: "로얄캐닌 건식", dryCalories: 385 },
   { name: "나우프레시 건식", dryCalories: 360 },
   { name: "오리젠 6피쉬", dryCalories: 410 },
@@ -24,7 +24,7 @@ export const popularFoodBrands: FoodBrandData[] = [
   { name: "ANF 건식", dryCalories: 365 },
   { name: "네츄럴발란스 건식", dryCalories: 370 },
 
-  // 간식
+  // Treat
   { name: "츄르", treatCalories: 70 },
   { name: "그리니즈", treatCalories: 320 },
   { name: "덴티비츠", treatCalories: 310 },
