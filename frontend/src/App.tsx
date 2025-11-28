@@ -6,6 +6,7 @@ import NutritionTracker from './pages/NutritionTracker'
 import AIChat from './pages/AIChat'
 import { useCatStore } from './store/catStore'
 import { useTranslation } from 'react-i18next'
+import { loadSharedState } from './services/stateSync'
 
 const fallbackAvatar =
   'https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=200&q=60'
@@ -297,6 +298,10 @@ function App() {
   useEffect(() => {
     loadCats()
   }, [loadCats])
+
+  useEffect(() => {
+    loadSharedState()
+  }, [])
 
   return (
     <BrowserRouter>

@@ -1,4 +1,5 @@
 import { HealthLog, Symptom, WeightLog, VetVisit, Prescription, MoodLog } from '../types';
+import { scheduleSharedStateSave } from './stateSync';
 
 // localStorage 키
 const HEALTH_LOGS_KEY = 'healthLogs'; // ✅ 수정
@@ -8,6 +9,11 @@ const VET_VISITS_KEY = 'cat-vet-visits';
 const PRESCRIPTIONS_KEY = 'cat-prescriptions';
 const MOOD_LOGS_KEY = 'cat-mood-logs';
 const CHAT_HISTORY_KEY = 'chat-history';
+
+const persist = (key: string, value: unknown) => {
+  localStorage.setItem(key, JSON.stringify(value));
+  scheduleSharedStateSave();
+};
 
 // HealthLog Storage
 export const healthLogStorage = {
@@ -53,7 +59,7 @@ export const healthLogStorage = {
   add(log: HealthLog): void {
     const logs = this.getAll();
     logs.push(log);
-    localStorage.setItem(HEALTH_LOGS_KEY, JSON.stringify(logs));
+    persist(HEALTH_LOGS_KEY, logs);
     console.log('✅ Health log saved:', log); // 디버깅용
     console.log('📋 Total logs now:', logs.length); // 디버깅용
   },
@@ -63,14 +69,14 @@ export const healthLogStorage = {
     const index = logs.findIndex(log => log.id === id);
     if (index !== -1) {
       logs[index] = { ...logs[index], ...updatedLog };
-      localStorage.setItem(HEALTH_LOGS_KEY, JSON.stringify(logs));
+      persist(HEALTH_LOGS_KEY, logs);
       console.log('✅ Health log updated:', logs[index]); // 디버깅용
     }
   },
 
   delete(id: string): void {
     const logs = this.getAll().filter(log => log.id !== id);
-    localStorage.setItem(HEALTH_LOGS_KEY, JSON.stringify(logs));
+    persist(HEALTH_LOGS_KEY, logs);
     console.log('✅ Health log deleted:', id); // 디버깅용
   },
 };
@@ -89,13 +95,13 @@ export const symptomStorage = {
   add(symptom: Symptom): void {
     const symptoms = this.getAll();
     symptoms.push(symptom);
-    localStorage.setItem(SYMPTOMS_KEY, JSON.stringify(symptoms));
+    persist(SYMPTOMS_KEY, symptoms);
     console.log('✅ Symptom saved:', symptom); // 디버깅용
   },
 
   delete(id: string): void {
     const symptoms = this.getAll().filter(symptom => symptom.id !== id);
-    localStorage.setItem(SYMPTOMS_KEY, JSON.stringify(symptoms));
+    persist(SYMPTOMS_KEY, symptoms);
     console.log('✅ Symptom deleted:', id); // 디버깅용
   },
 };
@@ -116,13 +122,13 @@ export const weightLogStorage = {
   add(log: WeightLog): void {
     const logs = this.getAll();
     logs.push(log);
-    localStorage.setItem(WEIGHT_LOGS_KEY, JSON.stringify(logs));
+    persist(WEIGHT_LOGS_KEY, logs);
     console.log('✅ Weight log saved:', log);
   },
 
   delete(id: string): void {
     const logs = this.getAll().filter(log => log.id !== id);
-    localStorage.setItem(WEIGHT_LOGS_KEY, JSON.stringify(logs));
+    persist(WEIGHT_LOGS_KEY, logs);
     console.log('✅ Weight log deleted:', id);
   },
 };
@@ -143,13 +149,13 @@ export const vetVisitStorage = {
   add(visit: VetVisit): void {
     const visits = this.getAll();
     visits.push(visit);
-    localStorage.setItem(VET_VISITS_KEY, JSON.stringify(visits));
+    persist(VET_VISITS_KEY, visits);
     console.log('✅ Vet visit saved:', visit);
   },
 
   delete(id: string): void {
     const visits = this.getAll().filter(visit => visit.id !== id);
-    localStorage.setItem(VET_VISITS_KEY, JSON.stringify(visits));
+    persist(VET_VISITS_KEY, visits);
     console.log('✅ Vet visit deleted:', id);
   },
 };
@@ -172,7 +178,7 @@ export const prescriptionStorage = {
   add(prescription: Prescription): void {
     const prescriptions = this.getAll();
     prescriptions.push(prescription);
-    localStorage.setItem(PRESCRIPTIONS_KEY, JSON.stringify(prescriptions));
+    persist(PRESCRIPTIONS_KEY, prescriptions);
     console.log('✅ Prescription saved:', prescription);
   },
 
@@ -181,14 +187,14 @@ export const prescriptionStorage = {
     const index = prescriptions.findIndex(p => p.id === id);
     if (index !== -1) {
       prescriptions[index] = { ...prescriptions[index], ...updates };
-      localStorage.setItem(PRESCRIPTIONS_KEY, JSON.stringify(prescriptions));
+      persist(PRESCRIPTIONS_KEY, prescriptions);
       console.log('✅ Prescription updated:', prescriptions[index]);
     }
   },
 
   delete(id: string): void {
     const prescriptions = this.getAll().filter(p => p.id !== id);
-    localStorage.setItem(PRESCRIPTIONS_KEY, JSON.stringify(prescriptions));
+    persist(PRESCRIPTIONS_KEY, prescriptions);
     console.log('✅ Prescription deleted:', id);
   },
 };
@@ -209,7 +215,7 @@ export const moodLogStorage = {
   add(log: MoodLog): void {
     const logs = this.getAll();
     logs.push(log);
-    localStorage.setItem(MOOD_LOGS_KEY, JSON.stringify(logs));
+    persist(MOOD_LOGS_KEY, logs);
     console.log('✅ Mood log saved:', log);
   },
 
@@ -218,14 +224,14 @@ export const moodLogStorage = {
     const index = logs.findIndex(log => log.id === id);
     if (index !== -1) {
       logs[index] = { ...logs[index], ...updates };
-      localStorage.setItem(MOOD_LOGS_KEY, JSON.stringify(logs));
+      persist(MOOD_LOGS_KEY, logs);
       console.log('✅ Mood log updated:', logs[index]);
     }
   },
 
   delete(id: string): void {
     const logs = this.getAll().filter(log => log.id !== id);
-    localStorage.setItem(MOOD_LOGS_KEY, JSON.stringify(logs));
+    persist(MOOD_LOGS_KEY, logs);
     console.log('✅ Mood log deleted:', id);
   },
 };
