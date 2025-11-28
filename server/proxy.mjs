@@ -15,6 +15,9 @@ const PORT = process.env.PORT || 8787
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const STATE_FILE = process.env.STATE_FILE || path.join(path.dirname(new URL(import.meta.url).pathname), 'state.json')
 const STATE_WRITE_TOKEN = process.env.STATE_WRITE_TOKEN || ''
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_KEY = process.env.SUPABASE_KEY
+const STATE_ID = process.env.STATE_ID || 'global'
 
 if (!GEMINI_API_KEY) {
   console.error('GEMINI_API_KEY is missing. Set it in your environment.')
@@ -30,17 +33,62 @@ const respond = (res, status, data) => {
   res.end(JSON.stringify(data))
 }
 
+const supabaseHeaders = SUPABASE_KEY
+  ? {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    }
+  : null
+
 const readState = async () => {
+  if (SUPABASE_URL && supabaseHeaders) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/shared_state?id=eq.${STATE_ID}&select=data`, {
+        method: 'GET',
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+      })
+      if (!res.ok) throw new Error(`Supabase read failed: ${res.status}`)
+      const rows = await res.json()
+      return rows[0]?.data || { message: 'empty', updatedAt: new Date().toISOString() }
+    } catch (err) {
+      console.error('Supabase read error, falling back to file:', err)
+    }
+  }
   try {
     const buf = await fs.readFile(STATE_FILE, 'utf8')
     return JSON.parse(buf)
   } catch (err) {
-    // 파일이 없으면 기본 빈 객체 반환
     return { message: 'demo state', updatedAt: new Date().toISOString() }
   }
 }
 
 const writeState = async (state) => {
+  if (SUPABASE_URL && supabaseHeaders) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/shared_state?on_conflict=id`, {
+        method: 'POST',
+        headers: {
+          ...supabaseHeaders,
+          Prefer: 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify([
+          {
+            id: STATE_ID,
+            data: state,
+            updated_at: new Date().toISOString(),
+          },
+        ]),
+      })
+      if (!res.ok) throw new Error(`Supabase write failed: ${res.status} ${await res.text()}`)
+      return
+    } catch (err) {
+      console.error('Supabase write error, falling back to file:', err)
+    }
+  }
   await fs.writeFile(STATE_FILE, JSON.stringify(state, null, 2), 'utf8')
 }
 
