@@ -28,16 +28,17 @@ const collectState = () => ({
   quickLogSettings: readJson('quickLogSettings') || null,
   nutritionGoals: readJson('nutritionGoals') || null,
   chatHistory: readJson('chat-history') || [],
+  catStorage: readJson('cat-storage') || null, // zustand persist state
 })
 
 export const loadSharedState = async () => {
-  if (!shouldSync) return false
+  if (!shouldSync) return null
   try {
     const res = await fetch(stateUrl!, { method: 'GET' })
-    if (!res.ok) return false
+    if (!res.ok) return null
     const data = await res.json()
     const state = data?.state
-    if (!state) return false
+    if (!state) return null
 
     writeJson('healthLogs', state.healthLogs ?? [])
     writeJson('cat-symptoms', state.symptoms ?? [])
@@ -48,10 +49,11 @@ export const loadSharedState = async () => {
     if (state.quickLogSettings) writeJson('quickLogSettings', state.quickLogSettings)
     if (state.nutritionGoals) writeJson('nutritionGoals', state.nutritionGoals)
     if (state.chatHistory) writeJson('chat-history', state.chatHistory)
-    return true
+    if (state.catStorage) writeJson('cat-storage', state.catStorage)
+    return state
   } catch (err) {
     console.error('Failed to load shared state', err)
-    return false
+    return null
   }
 }
 

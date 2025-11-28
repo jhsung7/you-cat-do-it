@@ -300,6 +300,15 @@ function App() {
   }, [loadCats])
 
   useEffect(() => {
+    loadSharedState().then((shared) => {
+      if (shared?.catStorage?.state) {
+        // hydrate cat store from shared state
+        useCatStore.setState(shared.catStorage.state as any)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
     loadSharedState()
   }, [])
 
