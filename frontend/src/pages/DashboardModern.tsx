@@ -455,6 +455,10 @@ function DashboardModern() {
     setShowQuickSettings(false)
     setVoiceMessage(i18n.language === 'ko' ? '설정이 저장되었습니다!' : 'Settings saved!')
     setTimeout(() => setVoiceMessage(''), 2000)
+    // 서버 공유 상태에도 반영
+    if (typeof window !== 'undefined' && (window as any).scheduleSharedStateSave) {
+      ;(window as any).scheduleSharedStateSave()
+    }
   }
 
   const addLog = (partial: Partial<HealthLog>) => {

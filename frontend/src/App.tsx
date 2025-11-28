@@ -6,7 +6,7 @@ import NutritionTracker from './pages/NutritionTracker'
 import AIChat from './pages/AIChat'
 import { useCatStore } from './store/catStore'
 import { useTranslation } from 'react-i18next'
-import { loadSharedState } from './services/stateSync'
+import { loadSharedState, scheduleSharedStateSave } from './services/stateSync'
 
 const fallbackAvatar =
   'https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=200&q=60'
@@ -306,6 +306,13 @@ function App() {
         useCatStore.setState(shared.catStorage.state as any)
       }
     })
+  }, [])
+
+  useEffect(() => {
+    const unsub = useCatStore.subscribe(() => {
+      scheduleSharedStateSave()
+    })
+    return () => unsub()
   }, [])
 
   useEffect(() => {

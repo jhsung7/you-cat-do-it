@@ -273,6 +273,9 @@ function NutritionTracker() {
       treatCaloriesPer100g: foodForm.treatCalories,
     }
     localStorage.setItem('quickLogSettings', JSON.stringify(updated))
+    if (typeof window !== 'undefined' && (window as any).scheduleSharedStateSave) {
+      ;(window as any).scheduleSharedStateSave()
+    }
     setShowFoodSettings(false)
   }
 
