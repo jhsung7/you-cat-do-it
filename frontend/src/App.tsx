@@ -74,7 +74,7 @@ function Navigation() {
             <div className="flex h-12 w-12 items-center justify-center text-3xl">🐾</div>
             <div>
               <p className="text-xs uppercase tracking-wide text-gray-400">{t('nav.title')}</p>
-              <p className="text-lg font-semibold text-gray-900">Cat Health</p>
+              <p className="text-lg font-semibold text-gray-900">YOU CAT DO IT</p>
             </div>
           </Link>
 
@@ -188,7 +188,7 @@ function Navigation() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs uppercase tracking-wide text-gray-400">{t('nav.title')}</p>
-            <p className="text-xl font-semibold text-gray-900">Cat Health</p>
+            <p className="text-xl font-semibold text-gray-900">YOU CAT DO IT</p>
           </div>
           <button
             onClick={toggleLanguage}

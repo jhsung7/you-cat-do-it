@@ -26,10 +26,23 @@ function AIChat() {
   const { cats, selectedCat } = useCatStore();
   const { getRecentLogs, getAnomalies } = useHealthStore();
 
+  const greetingText = () => {
+    const name = selectedCat?.name || (i18n.language === 'ko' ? '고양이' : 'your cat');
+    return (
+      t('aiChat.greeting', {
+        catName: name,
+        defaultValue:
+          i18n.language === 'ko'
+            ? `안녕하세요! 😺 저는 고양이 건강 상담 AI입니다. ${name}의 건강에 대해 궁금한 점을 물어보세요!`
+            : `Hi! 😺 I'm your cat health assistant. Ask me anything about ${name}'s health!`,
+      }) || ''
+    );
+  };
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: t('aiChat.greeting'),
+      content: greetingText(),
       timestamp: new Date(),
     },
   ]);
@@ -107,7 +120,7 @@ function AIChat() {
       const messagesWithGreeting = [
         {
           role: 'assistant' as const,
-          content: t('aiChat.greeting'),
+          content: greetingText(),
           timestamp: new Date(),
         },
         ...restoredMessages,
@@ -140,7 +153,7 @@ function AIChat() {
     setMessages([
       {
         role: 'assistant',
-        content: t('aiChat.greeting'),
+        content: greetingText(),
         timestamp: new Date(),
       },
     ]);
@@ -151,10 +164,10 @@ function AIChat() {
   useEffect(() => {
     setMessages([{
       role: 'assistant',
-      content: t('aiChat.greeting'),
+      content: greetingText(),
       timestamp: new Date(),
     }]);
-  }, [i18n.language, t]);
+  }, [i18n.language, t, selectedCat]);
 
 
   const handleSend = async () => {
