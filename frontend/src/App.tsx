@@ -72,10 +72,7 @@ function Navigation() {
         <div>
           <Link to="/" className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center text-3xl">🐾</div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-gray-400">{t('nav.title')}</p>
-              <p className="text-lg font-semibold text-gray-900">YOU CAT DO IT</p>
-            </div>
+            <p className="text-lg font-semibold text-gray-900">YOU CAT DO IT</p>
           </Link>
 
           <button
@@ -186,10 +183,7 @@ function Navigation() {
 
       <div className="lg:hidden border-b bg-white px-4 py-4">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-gray-400">{t('nav.title')}</p>
-            <p className="text-xl font-semibold text-gray-900">YOU CAT DO IT</p>
-          </div>
+          <p className="text-xl font-semibold text-gray-900">YOU CAT DO IT</p>
           <button
             onClick={toggleLanguage}
             className="rounded-2xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600"
