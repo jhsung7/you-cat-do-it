@@ -3,8 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { useCatStore } from '../store/catStore'
 import { useHealthStore } from '../store/healthStore'
 import WeightChart from '../components/WeightChart'
-import { HealthLog } from '../types'
+import { HealthLog, WeightLog } from '../types'
 import { findBrandCalories } from '../data/foodBrands'
+import { weightLogStorage } from '../services/storage'
+import { getDailySummary } from '../utils/calorieCalculator'
+
+const formatLocalDate = (date: Date) => date.toLocaleDateString('en-CA')
 
 function NutritionTracker() {
   const { t, i18n } = useTranslation()
@@ -61,7 +65,7 @@ function NutritionTracker() {
   const weightLogs = selectedCat ? getWeightLogs(selectedCat.id) : []
   const catLogs = selectedCat ? getRecentLogs(selectedCat.id, 90) : []
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = formatLocalDate(new Date())
   const todaysLogs = catLogs.filter((log) => log.date === todayStr)
 
   useEffect(() => {
@@ -92,24 +96,34 @@ function NutritionTracker() {
     }
   }, [])
 
-  const summary = useMemo(() => {
-    const caloriesGoal = nutritionGoals.calories
-    const totalCalories =
-      todaysLogs.reduce((sum, log) => {
-        const wet = (log.wetFoodAmount || 0) * calorieSettings.wet
-        const dry = (log.dryFoodAmount || 0) * calorieSettings.dry
-        const snack = (log.snackAmount || 0) * calorieSettings.treat
-        return sum + wet / 100 + dry / 100 + snack / 100
-      }, 0) || 0
-    const totalWater = todaysLogs.reduce((sum, log) => sum + (log.waterAmount || 0), 0) || 0
-    return {
-      caloriesGoal,
-      totalCalories,
-      totalWater,
+  const dailySummary = useMemo(() => {
+    if (!selectedCat) {
+      return getDailySummary(
+        { name: '', breed: '', birthDate: '', weight: 4, gender: 'male', neutered: true, id: '' },
+        [],
+        calorieSettings.wet,
+        calorieSettings.dry,
+        calorieSettings.treat
+      )
     }
-  }, [todaysLogs, calorieSettings, nutritionGoals])
+    return getDailySummary(
+      selectedCat,
+      todaysLogs,
+      calorieSettings.wet,
+      calorieSettings.dry,
+      calorieSettings.treat
+    )
+  }, [selectedCat, todaysLogs, calorieSettings])
 
-  const waterGoal = nutritionGoals.water
+  const waterGoal = dailySummary.recommendedWater || nutritionGoals.water
+
+  const summary = useMemo(() => {
+    return {
+      caloriesGoal: dailySummary.recommendedCalories || nutritionGoals.calories,
+      totalCalories: dailySummary.estimatedCalories || 0,
+      totalWater: dailySummary.totalWater || 0,
+    }
+  }, [dailySummary, nutritionGoals])
 
   const intakeBlocks = [
     {
@@ -210,10 +224,11 @@ function NutritionTracker() {
     e.preventDefault()
     if (!selectedCat) return
     const now = new Date()
+    const dateStr = formatLocalDate(now)
     const log: HealthLog = {
       id: crypto.randomUUID(),
       catId: selectedCat.id,
-      date: todayStr,
+      date: dateStr,
       time: formData.time || now.toTimeString().slice(0, 5),
       timestamp: now.getTime(),
       type: 'meal',
@@ -259,6 +274,40 @@ function NutritionTracker() {
     }
     localStorage.setItem('quickLogSettings', JSON.stringify(updated))
     setShowFoodSettings(false)
+  }
+
+  const handleDeleteWeight = (id: string) => {
+    if (!selectedCat) return
+    weightLogStorage.delete(id)
+    loadWeightLogs(selectedCat.id)
+  }
+
+  const handleEditWeight = (log: WeightLog) => {
+    const input = window.prompt(
+      i18n.language === 'ko' ? '새 체중(kg)을 입력하세요.' : 'Enter new weight (kg).',
+      String(log.weight)
+    )
+    if (!input) return
+    const newWeight = Number(input)
+    if (Number.isNaN(newWeight) || newWeight <= 0) return
+    const updated: WeightLog = { ...log, weight: newWeight }
+    handleDeleteWeight(log.id)
+    const timeStr = new Date(log.timestamp).toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    addHealthLog({
+      id: crypto.randomUUID(),
+      catId: selectedCat!.id,
+      date: log.date,
+      time: timeStr,
+      timestamp: log.timestamp,
+      type: 'weight',
+      notes: log.notes,
+    })
+    weightLogStorage.add(updated)
+    loadWeightLogs(selectedCat!.id)
   }
 
   return (
@@ -381,10 +430,55 @@ function NutritionTracker() {
               <p className="text-sm font-semibold text-gray-500">{t('nutrition.weightTrendTitle')}</p>
               <p className="text-sm text-gray-400">{t('nutrition.weightTrendSubtitle')}</p>
             </div>
+            {selectedCat && weightLogs.length > 0 && (
+              <p className="text-xs text-gray-500">
+                {i18n.language === 'ko' ? '체중 기록을 탭하여 수정/삭제할 수 있습니다.' : 'Tap a weight entry to edit/delete.'}
+              </p>
+            )}
           </div>
           <div className="mt-6">
             {selectedCat && weightLogs.length > 0 ? (
-              <WeightChart logs={weightLogs} />
+              <div className="space-y-4">
+                <WeightChart logs={weightLogs} />
+                <div className="rounded-2xl border border-gray-100 p-4 text-sm text-gray-700">
+                  <p className="text-xs uppercase tracking-wide text-gray-400">
+                    {i18n.language === 'ko' ? '최근 체중 기록' : 'Recent weights'}
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {[...weightLogs].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5).map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2 hover:border-indigo-200"
+                      >
+                        <div>
+                          <p className="font-semibold text-gray-900">{log.weight} kg</p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(log.timestamp).toLocaleString(i18n.language === 'ko' ? 'ko-KR' : 'en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                          </p>
+                        </div>
+                        <div className="flex gap-2 text-xs font-semibold">
+                          <button
+                            onClick={() => handleEditWeight(log)}
+                            className="rounded-full border border-indigo-200 px-2 py-1 text-indigo-600 hover:bg-indigo-50"
+                          >
+                            {t('catProfile.edit')}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteWeight(log.id)}
+                            className="rounded-full border border-red-200 px-2 py-1 text-red-600 hover:bg-red-50"
+                          >
+                            {t('catProfile.delete')}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
                 {t('dashboard.stats.noData')}

@@ -40,8 +40,8 @@ const formatLocalDate = (date: Date) => date.toLocaleDateString('en-CA')
 
 type AiSummary = {
   headline: string
-  subline: string
-  highlights: string[]
+  subline?: string
+  highlights: { text: string; status: 'ok' | 'warning' | 'info' }[]
   mode: 'alert' | 'default'
 }
 
@@ -97,13 +97,17 @@ const buildAiSummary = (
   const waterPercent = recommendedWater ? Math.round((totals.water / recommendedWater) * 100) : 0
 
   const totalPlayMinutes = recentThreeDayLogs.reduce((sum, log) => sum + (log.playDurationMinutes || 0), 0)
-  const avgDailyPlay = Math.round(totalPlayMinutes / 3)
-  const lastPlay = recentThreeDayLogs.find((log) => log.playDurationMinutes)
-  const brushedLog = recentThreeDayLogs.find((log) => log.brushedTeeth)
-  const hoursSinceBrush = brushedLog ? (now - brushedLog.timestamp) / (1000 * 60 * 60) : null
-  const daysSinceBrush = hoursSinceBrush != null ? Math.floor(hoursSinceBrush / 24) : null
+  const playSessions = recentThreeDayLogs.filter((log) => (log.playDurationMinutes || 0) > 0)
+  const playSessionCount = playSessions.length
+  const playMinutesTarget3d = 45 * 3 // 15min x 3 sessions per day → 135 min over 3 days
+  const playSessionsTarget3d = 3 * 3 // 3 sessions/day → 9 over 3 days
 
-  const highlights: string[] = []
+  const groomingLogsToday = recentLogs.filter((log) => log.type === 'grooming' || log.brushedTeeth)
+  const lastGrooming = recentThreeDayLogs.find((log) => log.type === 'grooming' || log.brushedTeeth)
+  const daysSinceLastGrooming =
+    lastGrooming != null ? Math.floor((now - lastGrooming.timestamp) / (1000 * 60 * 60 * 24)) : null
+
+  const highlights: { text: string; status: 'ok' | 'warning' | 'info' }[] = []
 
   if (anomalies.length) {
     const target = anomalies[0]
@@ -119,104 +123,106 @@ const buildAiSummary = (
         : lang === 'ko'
         ? '화장실 활동'
         : 'Litter activity'
-    highlights.push(
-      lang === 'ko' ? `${metricLabel} 이상 감지: ${target.description}` : `${metricLabel} alert: ${target.description}`
-    )
+    highlights.push({
+      text: lang === 'ko' ? `${metricLabel} 이상 감지: ${target.description}` : `${metricLabel} alert: ${target.description}`,
+      status: 'warning',
+    })
   }
 
   if (!recentLogs.length) {
-    highlights.push(
-      lang === 'ko'
-        ? '최근 24시간 기록이 없습니다. 식사, 놀이, 칫솔질을 기록하면 더 정확한 인사이트를 받을 수 있어요.'
-        : 'No logs in the last 24 hours—track meals, play, or brushing to unlock richer insights.'
-    )
+    highlights.push({
+      text:
+        lang === 'ko'
+          ? '최근 24시간 기록이 없습니다. 식사, 놀이, 칫솔질을 기록하면 더 정확한 인사이트를 받을 수 있어요.'
+          : 'No logs in the last 24 hours—track meals, play, or brushing to unlock richer insights.',
+      status: 'warning',
+    })
   } else if (recommendedCalories) {
     if (caloriePercent < 85) {
       const deficit = Math.max(0, recommendedCalories - calories)
-      highlights.push(
-        lang === 'ko'
-          ? `칼로리가 권장량의 ${caloriePercent}% 수준입니다. 오늘 약 ${deficit} kcal를 추가 급여해 보세요.`
-          : `Calories are about ${caloriePercent}% of goal—offer roughly ${deficit} kcal more today.`
-      )
+      highlights.push({
+        text:
+          lang === 'ko'
+            ? `칼로리가 권장량의 ${caloriePercent}% 수준입니다. 오늘 약 ${deficit} kcal를 추가 급여해 보세요.`
+            : `Calories are about ${caloriePercent}% of goal—offer roughly ${deficit} kcal more today.`,
+        status: 'warning',
+      })
     } else if (caloriePercent > 125) {
       const surplus = Math.max(0, calories - recommendedCalories)
-      highlights.push(
-        lang === 'ko'
-          ? `칼로리가 권장량보다 ${surplus} kcal 많습니다. 간식이나 사료량을 조금 줄여보세요.`
-          : `Calories exceed target by ~${surplus} kcal. Trim treats or portions a bit.`
-      )
+      highlights.push({
+        text:
+          lang === 'ko'
+            ? `칼로리가 권장량보다 ${surplus} kcal 많습니다. 간식이나 사료량을 조금 줄여보세요.`
+            : `Calories exceed target by ~${surplus} kcal. Trim treats or portions a bit.`,
+        status: 'warning',
+      })
     } else {
-      highlights.push(
-        lang === 'ko'
-          ? '칼로리 섭취가 안정적으로 유지되고 있어요.'
-          : 'Calorie intake sits comfortably within the healthy range.'
-      )
+      highlights.push({
+        text:
+          lang === 'ko'
+            ? '칼로리 섭취가 안정적으로 유지되고 있어요.'
+            : 'Calorie intake sits comfortably within the healthy range.',
+        status: 'ok',
+      })
     }
   }
 
   if (recommendedWater) {
     if (waterPercent < 70) {
       const needed = Math.max(0, recommendedWater - totals.water)
-      highlights.push(
-        lang === 'ko'
-          ? `수분 섭취가 목표치의 ${waterPercent}%입니다. 약 ${needed}ml 더 마실 수 있게 도와주세요.`
-          : `Water intake is ~${waterPercent}% of goal. Encourage another ${needed}ml today.`
-      )
+      highlights.push({
+        text:
+          lang === 'ko'
+            ? `수분 섭취가 목표치의 ${waterPercent}%입니다. 약 ${needed}ml 더 마실 수 있게 도와주세요.`
+            : `Water intake is ~${waterPercent}% of goal. Encourage another ${needed}ml today.`,
+        status: 'warning',
+      })
     } else if (waterPercent > 140) {
-      highlights.push(
-        lang === 'ko'
-          ? '수분 섭취가 평소보다 높습니다. 요로 증상이나 당뇨 징후가 없는지 확인하세요.'
-          : 'Water intake is higher than usual—watch for urinary or diabetes signs.'
-      )
+      highlights.push({
+        text:
+          lang === 'ko'
+            ? '수분 섭취가 평소보다 높습니다. 요로 증상이나 당뇨 징후가 없는지 확인하세요.'
+            : 'Water intake is higher than usual—watch for urinary or diabetes signs.',
+        status: 'warning',
+      })
     } else {
-      highlights.push(
-        lang === 'ko'
-          ? '수분 섭취도 건강 범위 안에 있어요.'
-          : 'Hydration looks balanced today.'
-      )
+      highlights.push({
+        text:
+          lang === 'ko'
+            ? '수분 섭취도 건강 범위 안에 있어요.'
+            : 'Hydration looks balanced today.',
+        status: 'ok',
+      })
     }
   }
 
-  if (totalPlayMinutes > 0) {
-    const playLabel =
-      lastPlay?.playType === 'catWheel'
-        ? lang === 'ko'
-          ? '캣휠'
-          : 'wheel'
-        : lang === 'ko'
-        ? '장난감'
-        : 'toy'
-    highlights.push(
-      lang === 'ko'
-        ? `${playLabel} 놀이로 최근 3일간 하루 평균 ${avgDailyPlay}분 활동했습니다.`
-        : `A ${playLabel} session kept activity at about ${avgDailyPlay} min/day over the last 3 days.`
-    )
-  } else {
-    highlights.push(
-      lang === 'ko'
-        ? '최근 3일간 놀이 기록이 없습니다. 짧은 장난감 놀이로 활동량을 채워주세요.'
-        : 'No play sessions logged in the last 3 days—add a short toy or wheel workout.'
-    )
-  }
-
-  if (brushedLog) {
-    const productNote = brushedLog.dentalCareProduct
+  const playIsOnTarget = totalPlayMinutes >= playMinutesTarget3d && playSessionCount >= playSessionsTarget3d
+  highlights.push({
+    text: playIsOnTarget
       ? lang === 'ko'
-        ? ` (${brushedLog.dentalCareProduct})`
-        : ` (${brushedLog.dentalCareProduct})`
-      : ''
-    highlights.push(
-      lang === 'ko'
-        ? `치아는 ${daysSinceBrush === 0 ? '오늘' : `${daysSinceBrush}일 전`} 양치했습니다${productNote}.`
-        : `Teeth were brushed ${daysSinceBrush === 0 ? 'today' : `${daysSinceBrush} day(s) ago`}${productNote}.`
-    )
-  } else {
-    highlights.push(
-      lang === 'ko'
-        ? '최근 3일간 칫솔질 기록이 없습니다. 구강 케어를 추가하면 치석 예방에 도움이 됩니다.'
-        : 'No toothbrushing logged in the last 3 days—regular care keeps tartar at bay.'
-    )
-  }
+        ? `놀이가 목표에 맞아요: 최근 3일간 ${playSessionCount}회, 약 ${totalPlayMinutes}분 기록.`
+        : `Play is on track: ${playSessionCount} sessions, ~${totalPlayMinutes} min over the last 3 days.`
+      : lang === 'ko'
+      ? `놀이가 부족해요: 최근 3일간 ${playSessionCount}회, 약 ${totalPlayMinutes}분. 하루 15분씩 3회(총 135분/3일)을 채워주세요.`
+      : `Play is light: ${playSessionCount} sessions, ~${totalPlayMinutes} min over the last 3 days. Aim for 3 sessions/day (135 min across 3 days).`,
+    status: playIsOnTarget ? 'ok' : 'warning',
+  })
+
+  const hasGroomingToday = groomingLogsToday.length > 0
+  highlights.push({
+    text: hasGroomingToday
+      ? lang === 'ko'
+        ? '오늘 그루밍/양치가 기록되었습니다. 하루 1회 이상 유지해주세요.'
+        : 'Grooming/brushing logged today. Keep a daily session going.'
+      : lang === 'ko'
+      ? `오늘 그루밍 기록이 없습니다. 하루 한 번 양치나 털 손질을 추가해주세요.${
+          daysSinceLastGrooming != null ? ` (마지막 기록: ${daysSinceLastGrooming}일 전)` : ''
+        }`
+      : `No grooming logged today. Add a daily tooth or coat brushing session.${
+          daysSinceLastGrooming != null ? ` (last logged ${daysSinceLastGrooming} day(s) ago)` : ''
+        }`,
+    status: hasGroomingToday ? 'ok' : 'warning',
+  })
 
   const hasAlert =
     anomalies.some((a) => a.severity === 'critical') || caloriePercent < 80 || waterPercent < 70
@@ -520,7 +526,7 @@ function DashboardModern() {
       setIsReadingSummary(false)
       return
     }
-    const sentences = [aiSummary.headline, aiSummary.subline, ...aiSummary.highlights]
+    const sentences = [aiSummary.headline, aiSummary.subline ?? '', ...aiSummary.highlights.map((h) => h.text)]
     const utterance = new SpeechSynthesisUtterance(sentences.filter(Boolean).join('. '))
     utterance.lang = lang === 'ko' ? 'ko-KR' : 'en-US'
     utterance.rate = 1
@@ -1143,62 +1149,60 @@ function DashboardModern() {
       </header>
 
       {selectedCat && (
-        <section
-          className={`rounded-3xl border p-6 shadow-sm ${
-            aiSummary.mode === 'alert'
-              ? 'border-amber-200 bg-amber-50'
-              : 'border-indigo-50 bg-gradient-to-r from-indigo-50 via-sky-50 to-white'
-          }`}
-        >
+        <section className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
           <div className="flex items-start gap-4">
-            <div
-              className={`flex h-12 w-12 items-center justify-center rounded-2xl text-2xl ${
-                aiSummary.mode === 'alert' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
-              }`}
-              aria-hidden="true"
-            >
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-2xl text-indigo-600">
               🤖
             </div>
             <div className="flex-1 space-y-3">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div className="space-y-1">
-            
-                  <h2 className="text-2xl font-bold text-gray-900">{aiSummary.headline}</h2>
-                  <p className="text-sm text-gray-600">{aiSummary.subline}</p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-2xl font-bold text-gray-900">{aiSummary.headline}</h2>
+                    <button
+                      type="button"
+                      onClick={handleReadSummary}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                    >
+                      {isReadingSummary ? '⏹️' : '🔊'}
+                    </button>
+                  </div>
+                  {aiSummary.subline && (
+                    <p className="inline-flex items-center rounded-xl bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700">
+                      {aiSummary.subline}
+                    </p>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={handleReadSummary}
-                  className="inline-flex items-center justify-end gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
-                >
-                  {isReadingSummary ? '⏹️' : '🔊'}{' '}
-        
-                </button>
               </div>
 
               {aiSummary.highlights.length > 0 ? (
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {aiSummary.highlights.map((item, idx) => (
-                    <div
-                      key={`${item}-${idx}`}
-                      className="flex items-start gap-2 rounded-2xl border border-indigo-100 bg-white/70 px-3 py-2 text-sm text-gray-800 shadow-sm"
-                    >
-                      <span className="pt-0.5 text-indigo-500">✔️</span>
-                      <span className="flex-1 leading-snug">{item}</span>
-                    </div>
-                  ))}
+                  {aiSummary.highlights.map((item, idx) => {
+                    const isOk = item.status === 'ok'
+                    const icon = isOk ? '✔️' : '▲'
+                    const iconColor = isOk ? 'text-green-500' : 'text-amber-500'
+                    return (
+                      <div
+                        key={`${item.text}-${idx}`}
+                        className="flex items-start gap-2 rounded-2xl border border-pink-100 bg-[#FDECF3] px-3 py-2 text-sm text-gray-800 shadow-sm"
+                      >
+                        <span className={`pt-0.5 ${iconColor}`}>{icon}</span>
+                        <span className="flex-1 leading-snug">{item.text}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-gray-500">{t('dashboard.aiSummary.empty')}</p>
               )}
 
               {anomalies.length > 0 && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+                <div className="rounded-2xl border border-amber-100 bg-white p-3 shadow-sm">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
                       {i18n.language === 'ko' ? '건강 알림' : 'Health alerts'}
                     </p>
-                    <span className="text-[11px] rounded-full bg-white/70 px-2 py-0.5 text-amber-700">
+                    <span className="text-[11px] rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
                       {anomalies.length}
                     </span>
                   </div>
@@ -1206,7 +1210,7 @@ function DashboardModern() {
                     {anomalies.map((anomaly) => (
                       <div
                         key={anomaly.id}
-                        className="rounded-xl border border-amber-100 bg-white px-3 py-2 text-sm text-amber-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+                        className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
                       >
                         <div className="flex items-center justify-between text-xs font-semibold text-amber-800">
                           <span>{anomalyMetricLabels[anomaly.metric]}</span>
