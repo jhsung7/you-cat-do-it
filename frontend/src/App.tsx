@@ -70,7 +70,7 @@ function Navigation() {
       <aside className="hidden lg:flex lg:w-72 lg:flex-col lg:justify-between lg:border-r lg:bg-white lg:px-6 lg:py-8">
         <div>
           <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-2xl">🐾</div>
+            <div className="flex h-12 w-12 items-center justify-center text-3xl">🐾</div>
             <div>
               <p className="text-xs uppercase tracking-wide text-gray-400">{t('nav.title')}</p>
               <p className="text-lg font-semibold text-gray-900">Cat Health</p>

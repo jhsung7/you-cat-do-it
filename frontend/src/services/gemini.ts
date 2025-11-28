@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getRelevantKnowledge, VetKnowledge } from './vetKnowledge';
+import { getRelevantKnowledge, VetKnowledge, vetKnowledgeBase } from './vetKnowledge';
 import { HealthAnomaly } from '../types';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -13,6 +13,65 @@ const logDebug = (...args: unknown[]) => {
 if (!apiKey && import.meta.env.DEV) {
   console.warn('⚠️ Gemini API key is missing; using offline fallbacks.');
 }
+
+type Embedding = number[];
+const knowledgeEmbeddings: { ko?: Record<string, Embedding>; en?: Record<string, Embedding> } = {};
+
+const embedText = async (text: string): Promise<Embedding | null> => {
+  if (!genAI) return null;
+  try {
+    const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    const res = await model.embedContent(text);
+    return res.embedding?.values || null;
+  } catch (err) {
+    console.error('Embedding error', err);
+    return null;
+  }
+};
+
+const buildKnowledgeEmbeddings = async (language: 'ko' | 'en') => {
+  if (knowledgeEmbeddings[language] || !genAI) return;
+  const map: Record<string, Embedding> = {};
+  for (const item of vetKnowledgeBase) {
+    const emb = await embedText(item.content[language]);
+    if (emb) map[item.id] = emb;
+  }
+  knowledgeEmbeddings[language] = map;
+};
+
+const cosineSim = (a: Embedding, b: Embedding) => {
+  let dot = 0,
+    na = 0,
+    nb = 0;
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (!na || !nb) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+};
+
+const getRelevantKnowledgeSmart = async (query: string, language: 'ko' | 'en', topK: number) => {
+  if (!genAI) return getRelevantKnowledge(query, language, topK);
+  await buildKnowledgeEmbeddings(language);
+  const queryEmb = await embedText(query);
+  if (!queryEmb || !knowledgeEmbeddings[language]) return getRelevantKnowledge(query, language, topK);
+
+  const scored = Object.entries(knowledgeEmbeddings[language] as Record<string, Embedding>).map(([id, emb]) => ({
+    id,
+    score: cosineSim(queryEmb, emb),
+  }));
+
+  const selected = scored
+    .filter((s) => s.score > 0.1)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map((s) => vetKnowledgeBase.find((k) => k.id === s.id)!)
+    .filter(Boolean);
+
+  return selected.length ? selected : getRelevantKnowledge(query, language, topK);
+};
 
 const MODEL_NAME = 'gemini-2.5-flash';
 const RECENT_MESSAGE_LIMIT = 10;
@@ -92,14 +151,43 @@ const parseTextNumber = (text: string, language: 'ko' | 'en', fallback: number) 
   return fallback
 }
 
-const simpleVoiceParser = (voiceInput: string, language: 'ko' | 'en') => {
+const simpleVoiceParser = (voiceInput: string, language: 'ko' | 'en', catName?: string) => {
   const lowered = voiceInput.toLowerCase()
   const result: any = { success: true, notes: voiceInput }
+  const catNameNormalized = catName?.toLowerCase().replace(/\s+/g, '')
 
   const hasAny = (words: string[]) => words.some((kw) => lowered.includes(kw))
 
+  // 언어 스크립트 단속: 설정 언어와 다른 스크립트가 많으면 실패 처리
+  const koreanChars = (voiceInput.match(/[가-힣]/g) || []).length
+  const latinChars = (voiceInput.match(/[a-z]/gi) || []).length
+  if (language === 'en' && koreanChars > latinChars * 0.2) {
+    return { success: false, message: 'Please speak in English only.' }
+  }
+  if (language === 'ko' && latinChars > koreanChars * 0.2) {
+    return { success: false, message: '한국어로만 말씀해 주세요.' }
+  }
+
   // Meals & snacks (phrase-level)
-  const mealWords = language === 'ko' ? ['밥', '사료', '먹였', '먹었', '식사', '밥먹었어', '밥 줬어'] : ['ate', 'feed', 'fed', 'meal', 'breakfast', 'dinner', 'lunch']
+const mealWords =
+  language === 'ko'
+    ? ['밥', '사료', '먹였', '먹었', '식사', '밥먹었어', '밥 줬어']
+    : [
+        'ate',
+        'feed',
+        'fed',
+        'meal',
+        'breakfast',
+        'dinner',
+        'lunch',
+        'just ate',
+        'had dinner',
+        'had lunch',
+        'ate meal',
+        'just ate meal',
+        'finished food',
+        'finished eating',
+      ]
   const wetWords = language === 'ko' ? ['습식', '파우치', '캔'] : ['wet', 'pouch', 'can']
   const dryWords = language === 'ko' ? ['건식', '키블', '건사료'] : ['dry', 'kibble']
   const treatWords = language === 'ko' ? ['간식', '츄르', '트릿'] : ['treat', 'snack', 'churu']
@@ -144,6 +232,14 @@ const simpleVoiceParser = (voiceInput: string, language: 'ko' | 'en') => {
   const brushWords = language === 'ko' ? ['칫솔', '치석', '양치', '치약'] : ['brush', 'tooth', 'teeth', 'dental']
   if (hasAny(brushWords)) {
     result.brushedTeeth = true
+  }
+
+  // Note cleanup: replace common misheard cat name with canonical name if present
+  if (catNameNormalized) {
+    const correctedNotes = voiceInput.replace(/who['’]?s/gi, catName || '')
+    if (correctedNotes !== voiceInput) {
+      result.notes = correctedNotes
+    }
   }
 
   const symptomMap: Record<string, { type: string; severity: 'mild' | 'moderate' | 'severe' }> = language === 'ko'
@@ -233,7 +329,7 @@ export const chatWithAI = async (
   followUpQuestions: string[];
   sources: Array<{ type: string; date?: string; content: string; url?: string }>;
 }> => {
-  const relevantKnowledge = getRelevantKnowledge(userMessage, language, 2);
+  const relevantKnowledge = await getRelevantKnowledgeSmart(userMessage, language, 3);
   try {
     if (!apiKey || !genAI) {
       return buildFallbackResponse(catProfile, relevantKnowledge, language)
@@ -248,7 +344,7 @@ export const chatWithAI = async (
 
     // 개선된 시스템 프롬프트 with Chain-of-Thought
     const systemPrompt = language === 'ko'
-      ? `당신은 경험 많은 고양이 전문 수의사입니다.
+      ? `당신은 경험 많은 고양이 전문 수의사입니다. 응답과 JSON은 반드시 한국어로만 작성하고, 영어/다른 언어 토큰은 무시하세요.
 
 답변 방식:
 1. **내부 추론 (reasoning)**: 먼저 증상을 분석하고 감별 진단을 고려합니다 (사용자에게는 보이지 않음)
@@ -257,6 +353,8 @@ export const chatWithAI = async (
    - 제공된 수의학 지식 참고
 2. **답변 (answer)**: 간결한 결론 (3-4문장)
 3. **확신도 (confidence)**: high(명확한 경우), medium(추가 정보 필요), low(불확실한 경우)
+4. **자기검증 (self-correction)**: 응답 전, 제공된 지식/출처와 모순 여부를 점검하고 불일치 시 불확실성을 명시하거나 답변을 수정
+5. **교차검증 질문 (verification)**: 핵심 주장이나 위험 요소를 확인할 수 있는 검증 질문 2개 이상을 후속 질문 목록에 포함
 
 답변 지침:
 - 핵심만 전달하고 불필요한 인사말이나 마무리 문구 생략
@@ -264,6 +362,7 @@ export const chatWithAI = async (
 - 일반적인 질문에는 병원 방문을 강요하지 말 것
 - **중요**: 이전 대화 내용을 기억하고 반영하여 답변 (사용자가 언급한 사료, 증상 등)
 - 답변의 근거가 되는 수의학 지식, 논문, 가이드라인이 있다면 반드시 출처를 명시
+ - 출처가 없으면 "출처 없음"으로 명시
 
 출력 형식 (JSON):
 {
@@ -275,7 +374,7 @@ export const chatWithAI = async (
     {"title": "출처 제목", "reference": "저자/기관명, 연도"}
   ]
 }`
-      : `You are an experienced veterinarian specializing in cats.
+      : `You are an experienced veterinarian specializing in cats. Respond ONLY in English; ignore non-English tokens.
 
 Response approach:
 1. **Internal reasoning**: First analyze symptoms and consider differential diagnosis (not shown to user)
@@ -284,6 +383,8 @@ Response approach:
    - Reference provided veterinary knowledge
 2. **Answer**: Concise conclusion (3-4 sentences)
 3. **Confidence**: high (clear case), medium (needs more info), low (uncertain)
+4. **Self-correction**: Before finalizing, check for conflicts with provided knowledge/sources; if conflicts exist, adjust or mark uncertainty
+5. **Verification**: Add at least 2 verification questions in followUpQuestions to confirm key claims or risks
 
 Guidelines:
 - Focus on key points, skip pleasantries
@@ -291,6 +392,7 @@ Guidelines:
 - Don't always recommend vet visits for general questions
 - **Important**: Remember and reference previous conversation context (foods, symptoms mentioned)
 - Cite veterinary knowledge, research papers, or guidelines when applicable
+ - If no source exists, state "no source"
 
 Output format (JSON):
 {
@@ -616,7 +718,7 @@ export const parseHealthLogFromVoice = async (
 }> => {
   try {
     if (!apiKey || !genAI) {
-      return simpleVoiceParser(voiceInput, language)
+      return simpleVoiceParser(voiceInput, language, catName)
     }
 
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
@@ -720,7 +822,7 @@ JSON response format:
     };
   } catch (error) {
     console.error('❌ Voice parsing error:', error);
-    return simpleVoiceParser(voiceInput, language)
+    return simpleVoiceParser(voiceInput, language, catName)
   }
 };
 

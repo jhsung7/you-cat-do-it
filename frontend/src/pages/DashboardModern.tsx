@@ -36,6 +36,7 @@ const fallbackAvatar =
   'https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=200&q=60'
 
 const DAY_IN_MS = 1000 * 60 * 60 * 24
+const formatLocalDate = (date: Date) => date.toLocaleDateString('en-CA')
 
 type AiSummary = {
   headline: string
@@ -223,15 +224,11 @@ const buildAiSummary = (
   return {
     headline: hasAlert
       ? lang === 'ko'
-        ? '⚠️ 집중 관리가 필요해요'
-        : '⚠️ Attention needed'
+        ? '건강 요약'
+        : 'Health Summary'
       : lang === 'ko'
       ? `${cat.name} 맞춤 코칭`
       : `Coaching for ${cat.name}`,
-    subline:
-      lang === 'ko'
-        ? '최근 데이터를 기반으로 한 AI 추천입니다.'
-        : 'AI-generated notes based on your latest activity logs.',
     highlights: highlights.slice(0, 4),
     mode: hasAlert ? 'alert' : 'default',
   }
@@ -299,6 +296,7 @@ function DashboardModern() {
   const [isListening, setIsListening] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date())
+  const [isDateFilterActive, setIsDateFilterActive] = useState(false)
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [showDetailedLog, setShowDetailedLog] = useState(false)
   const [showPlayPicker, setShowPlayPicker] = useState(false)
@@ -362,6 +360,7 @@ function DashboardModern() {
   useEffect(() => {
     if (selectedCat) {
       loadWeightLogs(selectedCat.id)
+      setIsDateFilterActive(false)
     }
   }, [selectedCat, loadWeightLogs])
 
@@ -435,15 +434,14 @@ function DashboardModern() {
     }, {})
   }, [catLogs])
 
-  const selectedDateStr = selectedDate.toISOString().split('T')[0]
+  const selectedDateStr = formatLocalDate(selectedDate)
   const selectedDateLogs = logsByDate[selectedDateStr] || []
   const upcomingVisits = useMemo(() => {
     if (!selectedCat) return []
     const visits = [...getVetVisits(selectedCat.id)]
     return visits.sort((a, b) => a.timestamp - b.timestamp)
   }, [selectedCat, getVetVisits])
-  const isFilteredByDate = Boolean(selectedCat && selectedDateLogs.length > 0)
-  const displayedLogs = isFilteredByDate ? selectedDateLogs : catLogs
+  const displayedLogs = isDateFilterActive ? selectedDateLogs : catLogs
   const summarySpeechRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   const saveSettings = () => {
@@ -456,10 +454,11 @@ function DashboardModern() {
   const addLog = (partial: Partial<HealthLog>) => {
     if (!selectedCat) return
     const now = new Date()
+    const dateStr = formatLocalDate(now)
     const log: HealthLog = {
       id: crypto.randomUUID(),
       catId: selectedCat.id,
-      date: now.toISOString().split('T')[0],
+      date: dateStr,
       time: now.toTimeString().slice(0, 5),
       timestamp: now.getTime(),
       type: partial.type || 'general',
@@ -772,11 +771,18 @@ function DashboardModern() {
               ? 'grooming'
               : 'general'
 
+          // If only a generic foodAmount was parsed, fall back to user defaults
+          const useDefaultMeal = parsed.foodAmount && !parsed.wetFoodAmount && !parsed.dryFoodAmount && !parsed.snackAmount
+          const fallbackWet =
+            useDefaultMeal && quickLogSettings.mealType !== 'dry' ? quickLogSettings.wetFoodAmount : undefined
+          const fallbackDry =
+            useDefaultMeal && quickLogSettings.mealType !== 'wet' ? quickLogSettings.dryFoodAmount : undefined
+
           addLog({
             type: derivedType,
             foodAmount: parsed.foodAmount,
-            wetFoodAmount: parsed.wetFoodAmount,
-            dryFoodAmount: parsed.dryFoodAmount,
+            wetFoodAmount: parsed.wetFoodAmount ?? fallbackWet,
+            dryFoodAmount: parsed.dryFoodAmount ?? fallbackDry,
             snackAmount: parsed.snackAmount,
             snackType: parsed.snackType,
             waterAmount: parsed.waterAmount,
@@ -1030,7 +1036,7 @@ function DashboardModern() {
 
     for (let day = 1; day <= lastDay.getDate(); day++) {
       const date = new Date(year, month, day)
-      const dateStr = date.toISOString().split('T')[0]
+      const dateStr = formatLocalDate(date)
       const isSelected = selectedDateStr === dateStr
       const dayLogs = logsByDate[dateStr] || []
       const dayBadges = getDayBadges(dayLogs)
@@ -1038,7 +1044,10 @@ function DashboardModern() {
       days.push(
         <button
           key={day}
-          onClick={() => setSelectedDate(date)}
+          onClick={() => {
+            setSelectedDate(date)
+            setIsDateFilterActive(true)
+          }}
           className={`rounded-2xl p-2 text-left text-sm transition ${
             isSelected
               ? 'bg-indigo-600 text-white shadow-lg'
@@ -1098,10 +1107,10 @@ function DashboardModern() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2">
             <Link
               to="/ai-chat"
-              className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2 text-sm font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100"
+              className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-5 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100"
             >
               🤖 {t('dashboard.aiChat')}
             </Link>
@@ -1109,15 +1118,19 @@ function DashboardModern() {
               <>
                 <button
                   onClick={() => setShowSymptomChecker(true)}
-                  className="inline-flex items-center gap-2 rounded-full border border-red-200 px-5 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                  className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-5 py-2 text-sm font-semibold text-amber-700 shadow-sm hover:bg-amber-100"
                 >
-                  ⚠️ {i18n.language === 'ko' ? '증상 기록' : 'Log Symptom'}
+                  🩺 {i18n.language === 'ko' ? '증상 기록' : 'Log Symptom'}
                 </button>
                 <button
                   onClick={isListening ? handleStopListening : handleVoiceInput}
                   disabled={isProcessing}
-                  className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold text-white ${
-                    isListening ? 'bg-gray-500' : isProcessing ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'
+                  className={`inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold shadow-sm ${
+                    isListening
+                      ? 'border-slate-200 bg-slate-200 text-slate-600'
+                      : isProcessing
+                      ? 'border-slate-200 bg-slate-100 text-slate-500'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                   }`}
                 >
                   {isListening ? '⏹️' : '🎤'}{' '}
@@ -1130,54 +1143,57 @@ function DashboardModern() {
       </header>
 
       {selectedCat && (
-      <section
-        className={`rounded-3xl border p-6 shadow-sm ${
-          aiSummary.mode === 'alert' ? 'border-rose-200 bg-rose-50' : 'border-indigo-100 bg-white'
-        }`}
-      >
+        <section
+          className={`rounded-3xl border p-6 shadow-sm ${
+            aiSummary.mode === 'alert'
+              ? 'border-amber-200 bg-amber-50'
+              : 'border-indigo-50 bg-gradient-to-r from-indigo-50 via-sky-50 to-white'
+          }`}
+        >
           <div className="flex items-start gap-4">
             <div
               className={`flex h-12 w-12 items-center justify-center rounded-2xl text-2xl ${
-                aiSummary.mode === 'alert' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-50 text-indigo-600'
+                aiSummary.mode === 'alert' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
               }`}
               aria-hidden="true"
             >
               🤖
             </div>
-            <div className="flex-1 space-y-2">
+            <div className="flex-1 space-y-3">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {t('dashboard.aiSummary.title')}
-                  </p>
+                <div className="space-y-1">
+            
                   <h2 className="text-2xl font-bold text-gray-900">{aiSummary.headline}</h2>
+                  <p className="text-sm text-gray-600">{aiSummary.subline}</p>
                 </div>
-                <div className="flex flex-col gap-2 text-sm text-gray-500 md:text-right">
-                  <p>{aiSummary.subline}</p>
-                  <button
-                    type="button"
-                    onClick={handleReadSummary}
-                    className="inline-flex items-center justify-end gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
-                  >
-                    {isReadingSummary ? '⏹️' : '🔊'}{' '}
-                    {isReadingSummary ? t('dashboard.aiSummaryStop') : t('dashboard.aiSummaryRead')}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleReadSummary}
+                  className="inline-flex items-center justify-end gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                >
+                  {isReadingSummary ? '⏹️' : '🔊'}{' '}
+        
+                </button>
               </div>
+
               {aiSummary.highlights.length > 0 ? (
-                <ul className="space-y-2 text-sm text-gray-700">
+                <div className="grid gap-2 sm:grid-cols-2">
                   {aiSummary.highlights.map((item, idx) => (
-                    <li key={`${item}-${idx}`} className="flex items-start gap-2">
-                      <span className="text-indigo-500">•</span>
-                      <span className="flex-1">{item}</span>
-                    </li>
+                    <div
+                      key={`${item}-${idx}`}
+                      className="flex items-start gap-2 rounded-2xl border border-indigo-100 bg-white/70 px-3 py-2 text-sm text-gray-800 shadow-sm"
+                    >
+                      <span className="pt-0.5 text-indigo-500">✔️</span>
+                      <span className="flex-1 leading-snug">{item}</span>
+                    </div>
                   ))}
-                </ul>
+                </div>
               ) : (
                 <p className="text-sm text-gray-500">{t('dashboard.aiSummary.empty')}</p>
               )}
+
               {anomalies.length > 0 && (
-                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-3">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
                       {i18n.language === 'ko' ? '건강 알림' : 'Health alerts'}
@@ -1186,11 +1202,11 @@ function DashboardModern() {
                       {anomalies.length}
                     </span>
                   </div>
-                  <ul className="mt-2 space-y-2 text-sm text-amber-900">
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {anomalies.map((anomaly) => (
-                      <li
+                      <div
                         key={anomaly.id}
-                        className="rounded-xl border border-amber-100 bg-white/60 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+                        className="rounded-xl border border-amber-100 bg-white px-3 py-2 text-sm text-amber-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
                       >
                         <div className="flex items-center justify-between text-xs font-semibold text-amber-800">
                           <span>{anomalyMetricLabels[anomaly.metric]}</span>
@@ -1211,9 +1227,9 @@ function DashboardModern() {
                           </span>
                         </div>
                         <p className="mt-1 text-[13px] leading-snug text-amber-900">{anomaly.description}</p>
-                      </li>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               )}
             </div>
@@ -1225,7 +1241,7 @@ function DashboardModern() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-gray-500">{t('dashboard.quickActionsTitle')}</p>
-              <p className="text-sm text-gray-400">{t('dashboard.quickActionsDescription')}</p>
+            <p className="text-sm text-gray-400">{t('dashboard.quickActionsDescription')}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -1246,189 +1262,189 @@ function DashboardModern() {
           </div>
         </div>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <button
-              onClick={quickLogMeal}
-              className="rounded-2xl border border-orange-200 px-4 py-3 text-sm font-semibold text-orange-700"
-            >
-              🍽️ {i18n.language === 'ko' ? '식사' : 'Meal'}
-            </button>
-            <button
-              onClick={quickLogTreat}
-              className="rounded-2xl border border-pink-200 px-4 py-3 text-sm font-semibold text-pink-700"
-            >
-              🍖 {i18n.language === 'ko' ? '간식' : 'Treat'}
-            </button>
-            <button
-              onClick={quickLogWater}
-              className="rounded-2xl border border-blue-200 px-4 py-3 text-sm font-semibold text-blue-700"
-            >
-              💧 {i18n.language === 'ko' ? '물' : 'Water'}
-            </button>
-          </div>
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <button
+            onClick={quickLogMeal}
+            className="rounded-2xl border border-orange-200 px-4 py-3 text-sm font-semibold text-orange-700"
+          >
+            🍽️ {i18n.language === 'ko' ? '식사' : 'Meal'}
+          </button>
+          <button
+            onClick={quickLogTreat}
+            className="rounded-2xl border border-pink-200 px-4 py-3 text-sm font-semibold text-pink-700"
+          >
+            🍖 {i18n.language === 'ko' ? '간식' : 'Treat'}
+          </button>
+          <button
+            onClick={quickLogWater}
+            className="rounded-2xl border border-blue-200 px-4 py-3 text-sm font-semibold text-blue-700"
+          >
+            💧 {i18n.language === 'ko' ? '물' : 'Water'}
+          </button>
+        </div>
 
-          <div className="mt-4 flex flex-wrap items-start gap-3">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          <button
+            onClick={() => setShowMoodModal(true)}
+            className="w-full rounded-2xl border border-yellow-200 px-4 py-3 text-sm font-semibold text-yellow-700"
+          >
+            😊 {i18n.language === 'ko' ? '기분' : 'Mood'}
+          </button>
+          <button
+            onClick={quickLogUrine}
+            className="w-full rounded-2xl border border-cyan-200 px-4 py-3 text-sm font-semibold text-cyan-700"
+          >
+            💦 {i18n.language === 'ko' ? '소변' : 'Urine'}
+          </button>
+          <button
+            onClick={quickLogFeces}
+            className="w-full rounded-2xl border border-amber-200 px-4 py-3 text-sm font-semibold text-amber-700"
+          >
+            💩 {i18n.language === 'ko' ? '대변' : 'Feces'}
+          </button>
+          <div className="relative">
             <button
-              onClick={() => setShowMoodModal(true)}
-              className="rounded-2xl border border-yellow-200 px-4 py-3 text-sm font-semibold text-yellow-700"
+              onClick={() => setShowGroomingPicker((prev) => !prev)}
+              className="w-full rounded-2xl border border-green-200 px-4 py-3 text-sm font-semibold text-green-700"
             >
-              😊 {i18n.language === 'ko' ? '기분' : 'Mood'}
+              🪒 {i18n.language === 'ko' ? '그루밍' : 'Grooming'}
             </button>
-            <button
-              onClick={quickLogUrine}
-              className="rounded-2xl border border-cyan-200 px-4 py-3 text-sm font-semibold text-cyan-700"
-            >
-              💦 {i18n.language === 'ko' ? '소변' : 'Urine'}
-            </button>
-            <button
-              onClick={quickLogFeces}
-              className="rounded-2xl border border-amber-200 px-4 py-3 text-sm font-semibold text-amber-700"
-            >
-              💩 {i18n.language === 'ko' ? '대변' : 'Feces'}
-            </button>
-            <div className="relative">
-              <button
-                onClick={() => setShowGroomingPicker((prev) => !prev)}
-                className="rounded-2xl border border-green-200 px-4 py-3 text-sm font-semibold text-green-700"
-              >
-                🪒 {i18n.language === 'ko' ? '그루밍' : 'Grooming'}
-              </button>
-              {showGroomingPicker && (
+            {showGroomingPicker && (
                 <div className="absolute left-0 z-20 mt-2 w-56 rounded-2xl border border-green-100 bg-white p-3 shadow-xl">
-                  <p className="mb-2 text-sm font-semibold text-gray-800">
-                    {i18n.language === 'ko' ? '그루밍 유형' : 'Grooming type'}
+                <p className="mb-2 text-sm font-semibold text-gray-800">
+                  {i18n.language === 'ko' ? '그루밍 유형' : 'Grooming type'}
+                </p>
+                <div className="flex gap-2">
+                  {[
+                    { value: 'teeth' as const, label: i18n.language === 'ko' ? '칫솔질' : 'Teeth', icon: '🪥' },
+                    { value: 'coat' as const, label: i18n.language === 'ko' ? '털 브러시' : 'Coat', icon: '🪒' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setGroomingType(option.value)}
+                      className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold ${
+                        groomingType === option.value
+                          ? 'border-green-400 bg-green-50 text-green-700'
+                          : 'border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {option.icon} {option.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    setShowGroomingPicker(false)
+                    quickLogBrushing(groomingType)
+                  }}
+                  className="mt-3 w-full rounded-2xl bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                >
+                  {i18n.language === 'ko' ? '기록하기' : 'Save'}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => {
+                setPlaySelection({
+                  type: 'toys',
+                  duration: quickLogSettings.playDurationToys,
+                })
+                setShowPlayPicker((prev) => !prev)
+              }}
+              className="w-full rounded-2xl border border-teal-200 px-4 py-3 text-sm font-semibold text-teal-700"
+            >
+              🎣 {i18n.language === 'ko' ? '놀이 기록' : 'Play'}
+            </button>
+            {showPlayPicker && (
+              <div className="absolute left-0 z-20 mt-2 w-64 rounded-2xl border border-teal-100 bg-white p-4 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {i18n.language === 'ko' ? '놀이 유형' : 'Play type'}
                   </p>
-                  <div className="flex gap-2">
-                    {[
-                      { value: 'teeth' as const, label: i18n.language === 'ko' ? '칫솔질' : 'Teeth', icon: '🪥' },
-                      { value: 'coat' as const, label: i18n.language === 'ko' ? '털 브러시' : 'Coat', icon: '🧴' },
-                    ].map((option) => (
-                      <button
-                        key={option.value}
-                        onClick={() => setGroomingType(option.value)}
-                        className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold ${
-                          groomingType === option.value
-                            ? 'border-green-400 bg-green-50 text-green-700'
-                            : 'border-gray-200 text-gray-600'
-                        }`}
-                      >
-                        {option.icon} {option.label}
-                      </button>
-                    ))}
-                  </div>
                   <button
-                    onClick={() => {
-                      setShowGroomingPicker(false)
-                      quickLogBrushing(groomingType)
-                    }}
-                    className="mt-3 w-full rounded-2xl bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                    onClick={() => setShowPlayPicker(false)}
+                    className="text-xs text-gray-500 hover:text-gray-700"
                   >
-                    {i18n.language === 'ko' ? '기록하기' : 'Save'}
+                    ✖️
                   </button>
                 </div>
-              )}
-            </div>
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setPlaySelection({
-                    type: 'toys',
-                    duration: quickLogSettings.playDurationToys,
-                  })
-                  setShowPlayPicker((prev) => !prev)
-                }}
-                className="rounded-2xl border border-teal-200 px-4 py-3 text-sm font-semibold text-teal-700"
-              >
-                🎣 {i18n.language === 'ko' ? '놀이 기록' : 'Play'}
-              </button>
-              {showPlayPicker && (
-                <div className="absolute left-0 z-20 mt-2 w-64 rounded-2xl border border-teal-100 bg-white p-4 shadow-xl">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-800">
-                      {i18n.language === 'ko' ? '놀이 유형' : 'Play type'}
-                    </p>
+                <div className="mt-3 flex gap-2">
+                  {[
+                    { value: 'toys' as const, label: i18n.language === 'ko' ? '장난감' : 'Toys', icon: '🎯' },
+                    { value: 'catWheel' as const, label: i18n.language === 'ko' ? '휠' : 'Wheel', icon: '🛞' },
+                  ].map((option) => (
                     <button
-                      onClick={() => setShowPlayPicker(false)}
-                      className="text-xs text-gray-500 hover:text-gray-700"
-                    >
-                      ✖️
-                    </button>
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    {[
-                      { value: 'toys' as const, label: i18n.language === 'ko' ? '장난감' : 'Toys', icon: '🎯' },
-                      { value: 'catWheel' as const, label: i18n.language === 'ko' ? '휠' : 'Wheel', icon: '🛞' },
-                    ].map((option) => (
-                      <button
-                        key={option.value}
-                        onClick={() =>
-                          setPlaySelection((prev) => ({
-                            ...prev,
-                            type: option.value,
-                            duration:
-                              option.value === 'catWheel'
-                                ? quickLogSettings.playDurationWheel
-                                : quickLogSettings.playDurationToys,
-                          }))
-                        }
-                        className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold ${
-                          playSelection.type === option.value
-                            ? 'border-teal-400 bg-teal-50 text-teal-700'
-                            : 'border-gray-200 text-gray-600'
-                        }`}
-                      >
-                        {option.icon} {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-3">
-                    <label className="text-xs font-semibold text-gray-500">
-                      {i18n.language === 'ko' ? '시간(분)' : 'Minutes'}
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
-                      value={playSelection.duration}
-                      onChange={(e) =>
+                      key={option.value}
+                      onClick={() =>
                         setPlaySelection((prev) => ({
                           ...prev,
-                          duration: Number(e.target.value) || prev.duration,
+                          type: option.value,
+                          duration:
+                            option.value === 'catWheel'
+                              ? quickLogSettings.playDurationWheel
+                              : quickLogSettings.playDurationToys,
                         }))
                       }
-                    />
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowPlayPicker(false)
-                      quickLogPlaySession(playSelection.type, playSelection.duration)
-                    }}
-                    className="mt-4 w-full rounded-2xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
-                  >
-                    {i18n.language === 'ko' ? '기록하기' : 'Save play log'}
-                  </button>
+                      className={`flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold ${
+                        playSelection.type === option.value
+                          ? 'border-teal-400 bg-teal-50 text-teal-700'
+                          : 'border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {option.icon} {option.label}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
-            <button
-              onClick={() => setShowWeightLogger(true)}
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
-            >
-              ⚖️ {i18n.language === 'ko' ? '체중' : 'Weight'}
-            </button>
-            <button
-              onClick={openMedicationManager}
-              className="rounded-2xl border border-rose-100 px-4 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-50"
-            >
-              💊 {i18n.language === 'ko' ? '약 관리' : 'Medications'}
-            </button>
-            <button
-              onClick={openAppointmentScheduler}
-              className="rounded-2xl border border-teal-100 px-4 py-3 text-sm font-semibold text-teal-600 hover:bg-teal-50"
-            >
-              📅 {i18n.language === 'ko' ? '예약' : 'Appointments'}
-            </button>
+                <div className="mt-3">
+                  <label className="text-xs font-semibold text-gray-500">
+                    {i18n.language === 'ko' ? '시간(분)' : 'Minutes'}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="mt-1 w-full rounded-2xl border border-gray-200 px-4 py-2"
+                    value={playSelection.duration}
+                    onChange={(e) =>
+                      setPlaySelection((prev) => ({
+                        ...prev,
+                        duration: Number(e.target.value) || prev.duration,
+                      }))
+                    }
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setShowPlayPicker(false)
+                    quickLogPlaySession(playSelection.type, playSelection.duration)
+                  }}
+                  className="mt-4 w-full rounded-2xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+                >
+                  {i18n.language === 'ko' ? '기록하기' : 'Save play log'}
+                </button>
+              </div>
+            )}
           </div>
+          <button
+            onClick={() => setShowWeightLogger(true)}
+            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700"
+          >
+            ⚖️ {i18n.language === 'ko' ? '체중' : 'Weight'}
+          </button>
+          <button
+            onClick={openMedicationManager}
+            className="rounded-2xl border border-rose-100 px-4 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-50"
+          >
+            💊 {i18n.language === 'ko' ? '약 관리' : 'Medications'}
+          </button>
+          <button
+            onClick={openAppointmentScheduler}
+            className="rounded-2xl border border-teal-100 px-4 py-3 text-sm font-semibold text-teal-600 hover:bg-teal-50"
+          >
+            📅 {i18n.language === 'ko' ? '예약' : 'Appointments'}
+          </button>
+        </div>
 
         {voiceMessage && (
           <div className="mt-4 rounded-2xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">{voiceMessage}</div>
@@ -1494,7 +1510,7 @@ function DashboardModern() {
           <div>
             <p className="text-sm font-semibold text-gray-500">{i18n.language === 'ko' ? '전체 기록' : 'All Logs'}</p>
             <p className="text-sm text-gray-400">
-              {isFilteredByDate
+              {isDateFilterActive
                 ? t('dashboard.allLogsFiltered', { date: selectedDateStr })
                 : i18n.language === 'ko'
                 ? '최근 활동을 모두 확인하세요.'
@@ -1502,7 +1518,10 @@ function DashboardModern() {
             </p>
           </div>
           <button
-            onClick={() => setSelectedDate(new Date())}
+            onClick={() => {
+              setSelectedDate(new Date())
+              setIsDateFilterActive(true)
+            }}
             className="text-xs font-semibold text-indigo-600"
           >
             {i18n.language === 'ko' ? '오늘로 이동' : 'Jump to today'}
