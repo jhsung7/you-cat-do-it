@@ -40,6 +40,23 @@ export const loadSharedState = async () => {
     const state = data?.state
     if (!state) return null
 
+    const hasCats = Array.isArray(state.catStorage?.state?.cats) && state.catStorage.state.cats.length > 0
+
+    if (!hasCats) {
+      // 아무 고양이가 없으면 모든 상태를 비움 (초기 페이지가 비어있도록)
+      writeJson('healthLogs', [])
+      writeJson('cat-symptoms', [])
+      writeJson('cat-weight-logs', [])
+      writeJson('cat-vet-visits', [])
+      writeJson('cat-prescriptions', [])
+      writeJson('cat-mood-logs', [])
+      writeJson('quickLogSettings', null)
+      writeJson('nutritionGoals', null)
+      writeJson('chat-history', [])
+      writeJson('cat-storage', { state: { cats: [], selectedCat: null }, version: 0 })
+      return state
+    }
+
     writeJson('healthLogs', state.healthLogs ?? [])
     writeJson('cat-symptoms', state.symptoms ?? [])
     writeJson('cat-weight-logs', state.weightLogs ?? [])

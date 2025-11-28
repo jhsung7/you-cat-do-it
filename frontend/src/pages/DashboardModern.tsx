@@ -1363,7 +1363,7 @@ function DashboardModern() {
               }}
               className="w-full rounded-2xl border border-teal-200 px-4 py-3 text-sm font-semibold text-teal-700"
             >
-              🎣 {i18n.language === 'ko' ? '놀이 기록' : 'Play'}
+              🎣 {i18n.language === 'ko' ? '놀이' : 'Play'}
             </button>
             {showPlayPicker && (
               <div className="absolute left-0 z-20 mt-2 w-64 rounded-2xl border border-teal-100 bg-white p-4 shadow-xl">
