@@ -134,13 +134,6 @@ function NutritionTracker() {
       color: 'bg-indigo-600',
     },
     {
-      key: 'protein',
-      label: t('nutrition.statLabels.protein'),
-      value: '45 / 50 g',
-      percent: 90,
-      color: 'bg-blue-500',
-    },
-    {
       key: 'water',
       label: t('nutrition.statLabels.water'),
       value: `${summary.totalWater} / ${waterGoal} ml`,
@@ -410,24 +403,10 @@ function NutritionTracker() {
             ))}
           </div>
         </div>
-
-        <div className="rounded-3xl bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-500">{t('nutrition.smartInsightsTitle')}</p>
-          </div>
-          <div className="mt-4 space-y-3 text-sm text-gray-600">
-            {smartInsights.map((tip, index) => (
-              <div key={`${tip}-${index}`} className="flex gap-3 rounded-2xl border border-gray-100 p-3">
-                <span className="text-indigo-500">•</span>
-                <p>{tip}</p>
-              </div>
-            ))}
-          </div>
-        </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-3">
-        <div className="rounded-3xl bg-white p-6 shadow-sm lg:col-span-2">
+      <section className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-gray-500">{t('nutrition.weightTrendTitle')}</p>
@@ -487,6 +466,20 @@ function NutritionTracker() {
                 {t('dashboard.stats.noData')}
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-500">{t('nutrition.smartInsightsTitle')}</p>
+          </div>
+          <div className="mt-4 space-y-3 text-sm text-gray-600">
+            {smartInsights.map((tip, index) => (
+              <div key={`${tip}-${index}`} className="flex gap-3 rounded-2xl border border-gray-100 p-3">
+                <span className="text-indigo-500">•</span>
+                <p>{tip}</p>
+              </div>
+            ))}
           </div>
         </div>
 
