@@ -1,0 +1,18 @@
+flowchart TB
+  App[App.tsx]
+  i18n[I18n language toggle]
+  Pages[Dashboard / HealthRecords / NutritionTracker / AIChat]
+  CatStore[catStore (cats, selectedCat)]
+  LocalStorage[(LocalStorage)]
+  StateSync[stateSync collect/save shared data]
+  SharedState[/Shared state JSON/]
+
+  App --> i18n
+  App --> Pages
+  App --> CatStore
+  CatStore <--> LocalStorage
+  Pages --> CatStore
+  Pages --> StateSync
+  StateSync --> LocalStorage
+  StateSync -->|saveSharedState| SharedState
+  SharedState -->|loadSharedState| StateSync

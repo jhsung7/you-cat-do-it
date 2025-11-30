@@ -1,0 +1,19 @@
+flowchart LR
+  User((User))
+  Browser[[React SPA (Vite)]]
+  Routes["Router: Dashboard / Health Records / Nutrition / AI Chat"]
+  CatStore["Zustand catStore (persist to localStorage)"]
+  StateSync["stateSync service\n(load/save shared state)"]
+  Proxy[[Gemini & State Proxy]]
+  GeminiAPI[(Google Gemini API)]
+  Supabase[(Supabase shared_state table)]
+
+  User --> Browser
+  Browser --> Routes
+  Routes --> CatStore
+  CatStore --> Browser
+  Browser --> StateSync
+  StateSync -->|/api/state GET/POST| Proxy
+  Proxy -->|read/write| Supabase
+  Browser -->|/api/gemini POST| Proxy
+  Proxy -->|generateContent| GeminiAPI

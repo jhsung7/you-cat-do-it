@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" width="880" height="360" role="img" aria-labelledby="title desc">
+  <title id="title">Frontend data flow</title>
+  <desc id="desc">App bootstraps i18n, pages, and cat store; state is persisted to local storage and synced to shared state via stateSync.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111827" />
+    </marker>
+  </defs>
+  <style>
+    text { font-family: 'Inter', 'Segoe UI', sans-serif; fill: #111827; font-size: 14px; }
+    .box { fill: #eef2ff; stroke: #4338ca; stroke-width: 2; rx: 10; ry: 10; }
+    .store { fill: #ecfeff; stroke: #0891b2; stroke-width: 2; }
+    .storage { fill: #fff7ed; stroke: #c2410c; stroke-width: 2; }
+    .shared { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+    .arrow { stroke: #1f2937; stroke-width: 2; marker-end: url(#arrow); fill: none; }
+  </style>
+
+  <!-- Nodes -->
+  <rect class="box" x="60" y="130" width="150" height="70" />
+  <text x="135" y="170" text-anchor="middle" font-weight="600">App.tsx</text>
+
+  <rect class="box" x="270" y="60" width="150" height="70" />
+  <text x="345" y="100" text-anchor="middle" font-weight="600">I18n</text>
+  <text x="345" y="118" text-anchor="middle">language toggle</text>
+
+  <rect class="box" x="270" y="130" width="150" height="70" />
+  <text x="345" y="165" text-anchor="middle" font-weight="600">Pages</text>
+  <text x="345" y="183" text-anchor="middle">Dashboard / Health /</text>
+  <text x="345" y="201" text-anchor="middle">Nutrition / AI Chat</text>
+
+  <rect class="store" x="270" y="230" width="150" height="80" />
+  <text x="345" y="265" text-anchor="middle" font-weight="600">catStore</text>
+  <text x="345" y="283" text-anchor="middle">cats, selectedCat</text>
+
+  <rect class="storage" x="480" y="240" width="150" height="70" />
+  <text x="555" y="275" text-anchor="middle" font-weight="600">localStorage</text>
+
+  <rect class="box" x="480" y="130" width="150" height="70" />
+  <text x="555" y="170" text-anchor="middle" font-weight="600">stateSync</text>
+  <text x="555" y="188" text-anchor="middle">collect / save</text>
+  <text x="555" y="206" text-anchor="middle">shared data</text>
+
+  <rect class="shared" x="690" y="130" width="150" height="70" />
+  <text x="765" y="165" text-anchor="middle" font-weight="600">Shared state JSON</text>
+
+  <!-- Arrows -->
+  <line class="arrow" x1="210" y1="165" x2="270" y2="95" />
+  <line class="arrow" x1="210" y1="165" x2="270" y2="165" />
+  <line class="arrow" x1="210" y1="165" x2="270" y2="270" />
+  <line class="arrow" x1="420" y1="270" x2="480" y2="270" />
+  <line class="arrow" x1="420" y1="185" x2="480" y2="185" />
+  <line class="arrow" x1="555" y1="200" x2="555" y2="240" />
+  <line class="arrow" x1="555" y1="240" x2="555" y2="200" />
+  <line class="arrow" x1="555" y1="165" x2="690" y2="165" />
+  <line class="arrow" x1="765" y1="200" x2="555" y2="230" />
