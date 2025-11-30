@@ -103,9 +103,6 @@ const buildAiSummary = (
   const playSessionsTarget3d = 3 * 3 // 3 sessions/day → 9 over 3 days
 
   const groomingLogsToday = recentLogs.filter((log) => log.type === 'grooming' || log.brushedTeeth)
-  const lastGrooming = recentThreeDayLogs.find((log) => log.type === 'grooming' || log.brushedTeeth)
-  const daysSinceLastGrooming =
-    lastGrooming != null ? Math.floor((now - lastGrooming.timestamp) / (1000 * 60 * 60 * 24)) : null
 
   const highlights: { text: string; status: 'ok' | 'warning' | 'info' }[] = []
 
