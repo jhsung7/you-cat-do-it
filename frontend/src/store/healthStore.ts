@@ -18,6 +18,8 @@ const sumFood = (log: HealthLog) =>
     (log.dryFoodAmount || 0) +
     (log.snackAmount || 0);
 
+const WET_FOOD_WATER_RATIO = 0.75
+
 const buildDailyTotals = (logs: HealthLog[]): Record<string, DailyTotals> => {
     return logs.reduce<Record<string, DailyTotals>>((acc, log) => {
         const date = log.date || new Date(log.timestamp).toISOString().split('T')[0];
@@ -25,7 +27,7 @@ const buildDailyTotals = (logs: HealthLog[]): Record<string, DailyTotals> => {
             acc[date] = { date, food: 0, water: 0, litter: 0 };
         }
         acc[date].food += sumFood(log);
-        acc[date].water += log.waterAmount || 0;
+        acc[date].water += (log.waterAmount || 0) + (log.wetFoodAmount || 0) * WET_FOOD_WATER_RATIO;
         acc[date].litter += log.litterCount || 0;
         return acc;
     }, {});

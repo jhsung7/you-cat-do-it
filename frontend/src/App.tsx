@@ -280,6 +280,7 @@ function Navigation() {
 
 function App() {
   const { loadCats } = useCatStore()
+  const { cats, selectedCat, selectCat } = useCatStore()
   const { i18n } = useTranslation()
 
   useEffect(() => {
@@ -292,6 +293,12 @@ function App() {
   useEffect(() => {
     loadCats()
   }, [loadCats])
+
+  useEffect(() => {
+    if (!selectedCat && cats.length > 0) {
+      selectCat(cats[0].id)
+    }
+  }, [cats, selectedCat, selectCat])
 
   useEffect(() => {
     loadSharedState().then((shared) => {

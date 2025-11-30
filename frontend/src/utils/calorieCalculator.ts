@@ -40,6 +40,8 @@ export function calculateDER(
  * 사료/간식의 칼로리 추정
  * 일반적인 고양이 사료 칼로리: 습식 약 70-100kcal/100g, 건식 약 350-400kcal/100g
  */
+export const WET_FOOD_WATER_RATIO = 0.75 // typical 75% moisture for canned/pouch diets
+
 export function estimateFoodCalories(
   wetFoodGrams: number = 0,
   dryFoodGrams: number = 0,
@@ -155,7 +157,7 @@ export function getDailySummary(
       acc.wet += log.wetFoodAmount || 0
       acc.dry += log.dryFoodAmount || 0
       acc.snack += log.snackAmount || 0
-      acc.water += log.waterAmount || 0
+      acc.water += (log.waterAmount || 0) + (log.wetFoodAmount || 0) * WET_FOOD_WATER_RATIO
 
       // 간식 칼로리를 로그별 커스텀 kcal/100g 기준으로 반영
       const snackCalPer100 = log.snackCaloriesPer100g || snackCaloriesPer100g

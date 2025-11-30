@@ -9,7 +9,7 @@ import DailySummary from '../components/DailySummary'
 import { startVoiceRecognition } from '../services/speech'
 import { parseHealthLogFromVoice } from '../services/gemini'
 import { HealthLog, Symptom, WeightLog, HealthAnomaly, Cat, Medication } from '../types'
-import { calculateDER, calculateRecommendedWater, estimateFoodCalories } from '../utils/calorieCalculator'
+import { calculateDER, calculateRecommendedWater, estimateFoodCalories, WET_FOOD_WATER_RATIO } from '../utils/calorieCalculator'
 import { defaultMedications, loadMedicationsForCat, saveMedicationsForCat } from '../utils/medicationStorage'
 
 type QuickLogSettings = {
@@ -76,7 +76,7 @@ const buildAiSummary = (
       acc.wet += log.wetFoodAmount || 0
       acc.dry += log.dryFoodAmount || 0
       acc.snack += log.snackAmount || 0
-      acc.water += log.waterAmount || 0
+      acc.water += (log.waterAmount || 0) + (log.wetFoodAmount || 0) * WET_FOOD_WATER_RATIO
       return acc
     },
     { wet: 0, dry: 0, snack: 0, water: 0 }
@@ -218,7 +218,7 @@ const buildAiSummary = (
       ? `오늘 그루밍 기록이 없습니다. 하루 한 번 양치나 털 손질을 추가해주세요.${
           daysSinceLastGrooming != null ? ` (마지막 기록: ${daysSinceLastGrooming}일 전)` : ''
         }`
-      : `No grooming logged today. Add a daily tooth or coat brushing session.${
+      : `No grooming logged today. Add a daily tooth or hair brushing session.${
           daysSinceLastGrooming != null ? ` (last logged ${daysSinceLastGrooming} day(s) ago)` : ''
         }`,
     status: hasGroomingToday ? 'ok' : 'warning',
@@ -311,7 +311,7 @@ function DashboardModern() {
     type: 'toys',
     duration: 15,
   })
-  const [groomingType, setGroomingType] = useState<'teeth' | 'coat'>('teeth')
+  const [groomingType, setGroomingType] = useState<'teeth' | 'hair'>('teeth')
   const [detailedLogData, setDetailedLogData] = useState(createInitialDetailedLog())
   const [editingHealthLog, setEditingHealthLog] = useState<HealthLog | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -699,7 +699,7 @@ function DashboardModern() {
     })
   }
 
-  const quickLogBrushing = (mode: 'teeth' | 'coat' = 'teeth') => {
+  const quickLogBrushing = (mode: 'teeth' | 'hair' = 'teeth') => {
     if (!ensureCatSelected()) return
     addLog({
       type: 'grooming',
@@ -712,7 +712,7 @@ function DashboardModern() {
             : 'Toothbrushing session logged'
           : i18n.language === 'ko'
           ? '털 손질 완료'
-          : 'Coat brushing session logged',
+          : 'Hair brushing session logged',
     })
   }
 
@@ -1294,26 +1294,26 @@ function DashboardModern() {
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
           <button
             onClick={() => setShowMoodModal(true)}
-            className="w-full rounded-2xl border border-yellow-200 px-4 py-3 text-sm font-semibold text-yellow-700"
+            className="flex h-14 w-full items-center justify-center rounded-2xl border border-yellow-200 px-4 text-sm font-semibold text-yellow-700"
           >
             😊 {i18n.language === 'ko' ? '기분' : 'Mood'}
           </button>
           <button
             onClick={quickLogUrine}
-            className="w-full rounded-2xl border border-cyan-200 px-4 py-3 text-sm font-semibold text-cyan-700"
+            className="flex h-14 w-full items-center justify-center rounded-2xl border border-cyan-200 px-4 text-sm font-semibold text-cyan-700"
           >
             💦 {i18n.language === 'ko' ? '소변' : 'Urine'}
           </button>
           <button
             onClick={quickLogFeces}
-            className="w-full rounded-2xl border border-amber-200 px-4 py-3 text-sm font-semibold text-amber-700"
+            className="flex h-14 w-full items-center justify-center rounded-2xl border border-amber-200 px-4 text-sm font-semibold text-amber-700"
           >
             💩 {i18n.language === 'ko' ? '대변' : 'Feces'}
           </button>
           <div className="relative">
             <button
               onClick={() => setShowGroomingPicker((prev) => !prev)}
-              className="w-full rounded-2xl border border-green-200 px-4 py-3 text-sm font-semibold text-green-700"
+              className="flex h-14 w-full items-center justify-center rounded-2xl border border-green-200 px-4 text-sm font-semibold text-green-700"
             >
               🪒 {i18n.language === 'ko' ? '그루밍' : 'Grooming'}
             </button>
@@ -1325,7 +1325,7 @@ function DashboardModern() {
                 <div className="flex gap-2">
                   {[
                     { value: 'teeth' as const, label: i18n.language === 'ko' ? '칫솔질' : 'Teeth', icon: '🪥' },
-                    { value: 'coat' as const, label: i18n.language === 'ko' ? '털 브러시' : 'Coat', icon: '🪒' },
+                    { value: 'hair' as const, label: i18n.language === 'ko' ? '털 브러시' : 'Hair', icon: '🪒' },
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -1361,7 +1361,7 @@ function DashboardModern() {
                 })
                 setShowPlayPicker((prev) => !prev)
               }}
-              className="w-full rounded-2xl border border-teal-200 px-4 py-3 text-sm font-semibold text-teal-700"
+              className="flex h-14 w-full items-center justify-center rounded-2xl border border-teal-200 px-4 text-sm font-semibold text-teal-700"
             >
               🎣 {i18n.language === 'ko' ? '놀이' : 'Play'}
             </button>
@@ -2205,7 +2205,7 @@ function DashboardModern() {
                 />
               </div>
               <div>
-                <label className="text-sm text-gray-600">{t('healthLog.time')}</label>
+                <label className="text-sm text-gray-600">{i18n.language === 'ko' ? '시간' : 'Time'}</label>
                 <input
                   type="time"
                   value={detailedLogData.time}
