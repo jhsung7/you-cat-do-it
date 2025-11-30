@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getRelevantKnowledge, VetKnowledge, vetKnowledgeBase } from './vetKnowledge';
-import { HealthAnomaly } from '../types';
+import { HealthAnomaly, Symptom } from '../types';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 const proxyUrl = import.meta.env.VITE_GEMINI_PROXY_URL as string | undefined;
@@ -345,7 +345,8 @@ export const chatWithAI = async (
   recentLogs?: any[],
   language: 'ko' | 'en' = 'ko',
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
-  anomalies: HealthAnomaly[] = []
+  anomalies: HealthAnomaly[] = [],
+  symptoms: Symptom[] = []
 ): Promise<{
   answer: string;
   reasoning?: string;
@@ -553,6 +554,35 @@ Response:
       contextPrompt += language === 'ko' ? '🚨 최근 감지된 이상 징후:\n' : '🚨 Recent anomalies detected:\n';
       anomalies.forEach((anomaly) => {
         contextPrompt += `- ${anomaly.description}\n`;
+      });
+      contextPrompt += '\n';
+    }
+
+    if (symptoms.length > 0) {
+      contextPrompt += language === 'ko' ? '📌 최근 증상 기록:\n' : '📌 Recent symptom records:\n';
+      const recentSymptoms = [...symptoms]
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, 7);
+      recentSymptoms.forEach((symptom) => {
+        const severityLabel =
+          language === 'ko'
+            ? symptom.severity === 'severe'
+              ? '심각'
+              : symptom.severity === 'moderate'
+              ? '중간'
+              : '경미'
+            : symptom.severity;
+        const urgencyLabel =
+          language === 'ko'
+            ? symptom.urgency === 'emergency'
+              ? '응급'
+              : symptom.urgency === 'warning'
+              ? '주의'
+              : '경미'
+            : symptom.urgency;
+        contextPrompt += `- ${symptom.date}: ${symptom.symptomType} (${language === 'ko' ? '심각도' : 'Severity'}: ${severityLabel}, ${
+          language === 'ko' ? '긴급도' : 'Urgency'
+        }: ${urgencyLabel}) - ${symptom.description}\n`;
       });
       contextPrompt += '\n';
     }

@@ -24,7 +24,7 @@ function AIChat() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { cats, selectedCat } = useCatStore();
-  const { getRecentLogs, getAnomalies } = useHealthStore();
+  const { getRecentLogs, getAnomalies, loadSymptoms, symptoms } = useHealthStore();
 
   const greetingText = () => {
     const name = selectedCat?.name || (i18n.language === 'ko' ? '고양이' : 'your cat');
@@ -186,6 +186,7 @@ function AIChat() {
     try {
       const recentLogs = selectedCat ? getRecentLogs(selectedCat.id, 7) : [];
       const anomalies = selectedCat ? getAnomalies(selectedCat.id) : [];
+      const symptomHistory = selectedCat ? symptoms : [];
 
       // 대화 히스토리 생성 (첫 인사 메시지 제외)
       const conversationHistory = messages
@@ -198,7 +199,8 @@ function AIChat() {
         recentLogs,
         i18n.language as 'ko' | 'en',
         conversationHistory,
-        anomalies
+        anomalies,
+        symptomHistory
       );
 
       const aiMessage: Message = {
@@ -593,3 +595,8 @@ function AIChat() {
 }
 
 export default AIChat;
+  useEffect(() => {
+    if (selectedCat) {
+      loadSymptoms(selectedCat.id);
+    }
+  }, [selectedCat, loadSymptoms]);
