@@ -693,7 +693,7 @@ function NutritionTracker() {
                 />
               </div>
               <div>
-                <label className="text-xs uppercase tracking-wide text-gray-400">{t('nutrition.mealsTitle')}</label>
+                <label className="text-xs uppercase tracking-wide text-gray-400">{t('nutrition.foodLabels.treat')}</label>
                 <input
                   type="text"
                   value={foodForm.treatBrand}

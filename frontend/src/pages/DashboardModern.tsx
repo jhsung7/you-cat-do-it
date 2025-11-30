@@ -200,27 +200,33 @@ const buildAiSummary = (
   highlights.push({
     text: playIsOnTarget
       ? lang === 'ko'
-        ? `놀이가 목표에 맞아요: 최근 3일간 ${playSessionCount}회, 약 ${totalPlayMinutes}분 기록.`
-        : `Play is on track: ${playSessionCount} sessions, ~${totalPlayMinutes} min over the last 3 days.`
+        ? '놀이량이 충분해요.'
+        : 'Play looks good.'
       : lang === 'ko'
-      ? `놀이가 부족해요: 최근 3일간 ${playSessionCount}회, 약 ${totalPlayMinutes}분. 하루 15분씩 3회(총 135분/3일)을 채워주세요.`
-      : `Play is light: ${playSessionCount} sessions, ~${totalPlayMinutes} min over the last 3 days. Aim for 3 sessions/day (135 min across 3 days).`,
+      ? '더 놀아주세요.'
+      : 'Play more sessions.',
     status: playIsOnTarget ? 'ok' : 'warning',
   })
 
   const hasGroomingToday = groomingLogsToday.length > 0
+  const hasBrushingTeeth = groomingLogsToday.some((log) => log.brushedTeeth)
+  const hasCoatBrush = groomingLogsToday.some((log) => log.type === 'grooming' && !log.brushedTeeth)
   highlights.push({
     text: hasGroomingToday
       ? lang === 'ko'
-        ? '오늘 그루밍/양치가 기록되었습니다. 하루 1회 이상 유지해주세요.'
-        : 'Grooming/brushing logged today. Keep a daily session going.'
+        ? '오늘 칫솔/털빗기 완료.'
+        : 'Brushing/grooming done today.'
       : lang === 'ko'
-      ? `오늘 그루밍 기록이 없습니다. 하루 한 번 양치나 털 손질을 추가해주세요.${
-          daysSinceLastGrooming != null ? ` (마지막 기록: ${daysSinceLastGrooming}일 전)` : ''
-        }`
-      : `No grooming logged today. Add a daily tooth or hair brushing session.${
-          daysSinceLastGrooming != null ? ` (last logged ${daysSinceLastGrooming} day(s) ago)` : ''
-        }`,
+      ? hasBrushingTeeth
+        ? '아직 털을 안 빗어줬어요.'
+        : hasCoatBrush
+        ? '아직 칫솔질을 안했어요.'
+        : '아직 칫솔/털빗기를 안했어요.'
+      : hasBrushingTeeth
+      ? 'No coat brushing yet today.'
+      : hasCoatBrush
+      ? 'No tooth brushing yet today.'
+      : 'No brushing/grooming yet today.',
     status: hasGroomingToday ? 'ok' : 'warning',
   })
 
@@ -549,20 +555,20 @@ function DashboardModern() {
 
   const quickLogMeal = () => {
     if (!ensureCatSelected()) return
+    const mealType = quickLogSettings.mealType
+    const wet = mealType === 'wet' || mealType === 'both' ? quickLogSettings.wetFoodAmount : 0
+    const dry = mealType === 'dry' || mealType === 'both' ? quickLogSettings.dryFoodAmount : 0
+    const waterFromWet = wet > 0 ? Math.round(wet * WET_FOOD_WATER_RATIO) : undefined
+    const noteParts: string[] = []
+    if (wet > 0) noteParts.push(`${quickLogSettings.wetFoodBrand || (i18n.language === 'ko' ? '습식' : 'Wet')} ${wet}g`)
+    if (dry > 0) noteParts.push(`${quickLogSettings.dryFoodBrand || (i18n.language === 'ko' ? '건식' : 'Dry')} ${dry}g`)
+
     addLog({
       type: 'meal',
-      wetFoodAmount:
-        quickLogSettings.mealType === 'wet' || quickLogSettings.mealType === 'both'
-          ? quickLogSettings.wetFoodAmount
-          : undefined,
-      dryFoodAmount:
-        quickLogSettings.mealType === 'dry' || quickLogSettings.mealType === 'both'
-          ? quickLogSettings.dryFoodAmount
-          : undefined,
-      notes:
-        i18n.language === 'ko'
-          ? `${quickLogSettings.wetFoodBrand || ''} ${quickLogSettings.wetFoodAmount}g`
-          : `${quickLogSettings.dryFoodBrand || ''} ${quickLogSettings.dryFoodAmount}g`,
+      wetFoodAmount: wet > 0 ? wet : undefined,
+      dryFoodAmount: dry > 0 ? dry : undefined,
+      waterAmount: waterFromWet,
+      notes: noteParts.join(' / '),
     })
   }
 
@@ -627,6 +633,9 @@ function DashboardModern() {
       lastGiven: '-',
     }
     setManagedMedications((prev) => [...prev, entry])
+    if (selectedCat) {
+      saveMedicationsForCat(selectedCat.id, [...managedMedications, entry])
+    }
     setNewMedicationForm({
       name: '',
       dosage: '',
@@ -1325,7 +1334,7 @@ function DashboardModern() {
                 <div className="flex gap-2">
                   {[
                     { value: 'teeth' as const, label: i18n.language === 'ko' ? '칫솔질' : 'Teeth', icon: '🪥' },
-                    { value: 'hair' as const, label: i18n.language === 'ko' ? '털 브러시' : 'Hair', icon: '🪒' },
+                    { value: 'hair' as const, label: i18n.language === 'ko' ? '털빗기' : 'Hair', icon: '🪒' },
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -1444,13 +1453,13 @@ function DashboardModern() {
             onClick={openMedicationManager}
             className="rounded-2xl border border-rose-100 px-4 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-50"
           >
-            💊 {i18n.language === 'ko' ? '약 관리' : 'Medications'}
+            💊 {i18n.language === 'ko' ? '약' : 'Medications'}
           </button>
           <button
             onClick={openAppointmentScheduler}
             className="rounded-2xl border border-teal-100 px-4 py-3 text-sm font-semibold text-teal-600 hover:bg-teal-50"
           >
-            📅 {i18n.language === 'ko' ? '예약' : 'Appointments'}
+            📅 {i18n.language === 'ko' ? '병원' : 'Appointments'}
           </button>
         </div>
 
