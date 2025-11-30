@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { HealthLog, Symptom, WeightLog, VetVisit, Prescription, MoodLog, HealthAnomaly } from '../types';
 import { healthLogStorage, symptomStorage, weightLogStorage, vetVisitStorage, prescriptionStorage, moodLogStorage } from '../services/storage';
 
-const ROLLING_WINDOW_DAYS = 3;
+const ROLLING_WINDOW_DAYS = 7;
 const TOTAL_WINDOW_DAYS = ROLLING_WINDOW_DAYS * 2;
 
 type DailyTotals = {

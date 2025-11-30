@@ -111,7 +111,7 @@ function HealthRecords() {
     ? i18n.language === 'ko'
       ? `${selectedCat.name} ${t('healthLog.title')}`
       : `${selectedCat.name}'s Health Log`
-    : t('healthLog.title')
+    : ''
   const sortedVisits = [...vetVisits].sort((a, b) => a.timestamp - b.timestamp)
   const noMedicationText = t('medicationsPage.none', {
     defaultValue: i18n.language === 'ko' ? '등록된 약이 없습니다.' : 'No medications yet.',
@@ -224,8 +224,7 @@ function HealthRecords() {
       <header className="rounded-3xl bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-2">
           <p className="text-sm font-semibold uppercase tracking-wide text-indigo-600">{t('nav.healthRecords')}</p>
-          <h1 className="text-3xl font-bold text-gray-900">{selectedCat ? selectedCat.name : t('healthLog.selectCatFirst')}</h1>
-          <p className="text-sm text-gray-500">{t('healthLog.selectCatDescription')}</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('healthLog.pageDescription')}</h1>
         </div>
       </header>
 
@@ -484,6 +483,26 @@ function HealthRecords() {
 
         <div className="space-y-4" id="appointments">
           <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <p className="text-sm font-semibold text-gray-500">{t('medicationsPage.reminders')}</p>
+            <div className="mt-4 space-y-3">
+              {reminders.map((rem) => (
+                <div key={rem.id} className={`rounded-2xl border p-4 ${rem.color}`}>
+                  <p className="text-sm font-semibold">{rem.title}</p>
+                  <p className="text-xs text-gray-600">{rem.description}</p>
+                </div>
+              ))}
+              {hospitalNotes.map((note) => (
+                <div key={note.id} className="rounded-2xl border border-gray-100 p-4">
+                  <p className="text-sm font-semibold text-gray-900">{note.title}</p>
+                  <p className="text-xs text-gray-500">{note.date}</p>
+                  <p className="text-sm text-gray-600">{note.location}</p>
+                  <p className="text-xs text-gray-500">{note.notes}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold text-gray-500">{t('nav.appointments')}</p>
             <form onSubmit={handleAddAppointment} className="mt-4 space-y-3 text-sm text-gray-600">
               <div>
@@ -542,33 +561,15 @@ function HealthRecords() {
               ))}
             </div>
           </div>
-
-          <div className="rounded-3xl bg-white p-6 shadow-sm">
-            <p className="text-sm font-semibold text-gray-500">{t('medicationsPage.reminders')}</p>
-            <div className="mt-4 space-y-3">
-              {reminders.map((rem) => (
-                <div key={rem.id} className={`rounded-2xl border p-4 ${rem.color}`}>
-                  <p className="text-sm font-semibold">{rem.title}</p>
-                  <p className="text-xs text-gray-600">{rem.description}</p>
-                </div>
-              ))}
-              {hospitalNotes.map((note) => (
-                <div key={note.id} className="rounded-2xl border border-gray-100 p-4">
-                  <p className="text-sm font-semibold text-gray-900">{note.title}</p>
-                  <p className="text-xs text-gray-500">{note.date}</p>
-                  <p className="text-sm text-gray-600">{note.location}</p>
-                  <p className="text-xs text-gray-500">{note.notes}</p>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </section>
 
       <section className="rounded-3xl bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold text-gray-500">{healthLogTitle}</p>
+            {healthLogTitle && (
+              <p className="text-sm font-semibold text-gray-500">{healthLogTitle}</p>
+            )}
             <p className="text-sm text-gray-400">{i18n.language === 'ko' ? '저장된 증상 기록' : 'Logged symptoms from Symptom Checker'}</p>
           </div>
         </div>

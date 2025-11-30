@@ -67,6 +67,24 @@ function NutritionTracker() {
 
   const todayStr = formatLocalDate(new Date())
   const todaysLogs = catLogs.filter((log) => log.date === todayStr)
+  const handleQuickAddWeight = () => {
+    if (!selectedCat) return
+    const input = window.prompt(i18n.language === 'ko' ? '새 체중(kg)을 입력하세요.' : 'Enter new weight (kg).')
+    if (!input) return
+    const val = Number(input)
+    if (Number.isNaN(val) || val <= 0) return
+    const now = new Date()
+    const entry: WeightLog = {
+      id: crypto.randomUUID(),
+      catId: selectedCat.id,
+      date: formatLocalDate(now),
+      timestamp: now.getTime(),
+      weight: val,
+      notes: '',
+    }
+    weightLogStorage.add(entry)
+    loadWeightLogs(selectedCat.id)
+  }
 
   useEffect(() => {
     const stored = localStorage.getItem('quickLogSettings')
@@ -152,11 +170,44 @@ function NutritionTracker() {
     const baseMeals = ageYears < 2 ? 3 : 2
     const mealsPerDay = dietMode ? baseMeals + 1 : baseMeals
     const perMealCalories = Math.max(30, Math.round(summary.caloriesGoal / mealsPerDay))
+    const totalSnacks = todaysLogs.reduce((sum, log) => sum + (log.snackAmount || 0), 0)
+    const snackLogs = todaysLogs.filter((log) => (log.snackAmount || 0) > 0).length
+    const totalMealsLogged = todaysLogs.filter((log) => (log.wetFoodAmount || 0) + (log.dryFoodAmount || 0) > 0).length
+    const totalWaterLogs = todaysLogs.filter((log) => log.waterAmount).length
+    const hours = todaysLogs
+      .map((log) => {
+        const [h] = (log.time || '').split(':').map(Number)
+        return Number.isFinite(h) ? h : null
+      })
+      .filter((h): h is number => h !== null)
+    const periodCounts = hours.reduce(
+      (acc, h) => {
+        if (h < 12) acc.morning += 1
+        else if (h < 18) acc.afternoon += 1
+        else acc.evening += 1
+        return acc
+      },
+      { morning: 0, afternoon: 0, evening: 0 }
+    )
+    const totalPeriods = periodCounts.morning + periodCounts.afternoon + periodCounts.evening
+    const dominantPeriod =
+      totalPeriods === 0
+        ? null
+        : (['morning', 'afternoon', 'evening'] as const).reduce((max, key) =>
+            periodCounts[key] > periodCounts[max] ? key : max
+          , 'morning')
 
     if (selectedCat) {
-      const mealText = i18n.language === 'ko'
-        ? `${selectedCat.name}에게 하루 ${mealsPerDay}번, 식사당 약 ${perMealCalories}kcal을 권장합니다.`
-        : `Plan about ${mealsPerDay} meals (~${perMealCalories} kcal each) for ${selectedCat.name}.`
+      const suggestedSchedule =
+        mealsPerDay >= 4
+          ? ['08:00', '12:30', '17:30', '21:00']
+          : mealsPerDay === 3
+          ? ['08:00', '13:00', '18:30']
+          : ['08:00', '18:00']
+      const mealText =
+        i18n.language === 'ko'
+          ? `${selectedCat.name}에게 하루 ${mealsPerDay}번, 식사당 약 ${perMealCalories}kcal · 권장 시간 ${suggestedSchedule.join(', ')}`
+          : `Plan ${mealsPerDay} meals (~${perMealCalories} kcal each). Suggested times: ${suggestedSchedule.join(', ')}.`
       insights.push(mealText)
       if (dietMode) {
         insights.push(
@@ -191,6 +242,20 @@ function NutritionTracker() {
       insights.push(t('nutrition.smartTips.calorieGoalMet'))
     }
 
+    if (calorieDiff > 40 && totalSnacks >= 5 && snackLogs > 0) {
+      insights.push(
+        i18n.language === 'ko'
+          ? '칼로리 초과는 간식 비중이 높아서일 수 있어요. 간식 양을 절반으로 줄여보세요.'
+          : 'Likely treat-heavy day. Try cutting snack amounts in half to get back on track.'
+      )
+    } else if (calorieDiff < -40 && totalMealsLogged <= 1) {
+      insights.push(
+        i18n.language === 'ko'
+          ? '오늘 식사 로그가 거의 없어요. 칼로리 부족 시 소량 추가 급여를 고려하세요.'
+          : 'Few meals logged today; add a small extra portion if your cat seems hungry.'
+      )
+    }
+
     if (summary.totalWater >= waterGoal) {
       insights.push(t('nutrition.smartTips.hydrationGoalMet'))
     } else {
@@ -199,6 +264,13 @@ function NutritionTracker() {
           amount: Math.max(0, Math.round(waterGoal - summary.totalWater)),
         })
       )
+      if (totalWaterLogs === 0) {
+        insights.push(
+          i18n.language === 'ko'
+            ? '물 로그가 없어 수분 섭취가 낮게 잡힐 수 있어요. 급수대 위치를 두 군데 이상 두는 것을 고려하세요.'
+            : 'No water logs yet; hydration may be undercounted. Add a second water spot to encourage drinking.'
+        )
+      }
     }
 
     if (todaysLogs.length === 0) {
@@ -208,6 +280,26 @@ function NutritionTracker() {
       if (recent?.time) {
         insights.push(t('nutrition.smartTips.recentMeal', { time: recent.time }))
       }
+    }
+
+    if (dominantPeriod && totalPeriods >= 3 && periodCounts[dominantPeriod] / totalPeriods >= 0.6) {
+      const periodLabel =
+        dominantPeriod === 'morning'
+          ? i18n.language === 'ko'
+            ? '아침'
+            : 'morning'
+          : dominantPeriod === 'afternoon'
+          ? i18n.language === 'ko'
+            ? '오후'
+            : 'afternoon'
+          : i18n.language === 'ko'
+          ? '저녁/밤'
+          : 'evening'
+      insights.push(
+        i18n.language === 'ko'
+          ? `${periodLabel}에만 편중된 기록이 많아요. 저녁분을 2회로 나눠 과식이나 공복을 줄여보세요.`
+          : `Meals cluster in the ${periodLabel}. Split the evening portion into two smaller servings to avoid overeating or long fasts.`
+      )
     }
 
     return insights
@@ -321,17 +413,13 @@ function NutritionTracker() {
         </button>
       </header>
 
-      <section className="grid gap-6 lg:grid-cols-3">
-        <div className="rounded-3xl bg-white p-6 shadow-sm lg:col-span-2">
+      <section className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-gray-500">{t('nutrition.intakeTitle')}</p>
-              <p className="text-sm text-gray-400">{t('nutrition.intakeDescription')}</p>
             </div>
             <div className="flex flex-col items-start gap-1 text-xs text-gray-500 sm:items-end">
-              <span>
-                {t('nutrition.statLabels.calorieGoal')}: {summary.caloriesGoal} kcal · {t('nutrition.statLabels.water')} {waterGoal} ml
-              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -390,7 +478,7 @@ function NutritionTracker() {
               </div>
             </div>
           )}
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-4 grid gap-4">
             {intakeBlocks.map((block) => (
               <div key={block.key} className="rounded-2xl border border-gray-100 p-4">
                 <p className="text-sm text-gray-500">{block.label}</p>
@@ -401,22 +489,51 @@ function NutritionTracker() {
                 <p className="mt-1 text-xs text-gray-500">{Math.round(block.percent)}%</p>
               </div>
             ))}
+            <div className="rounded-2xl bg-slate-50 p-4 text-sm text-gray-600">
+              <p className="text-xs uppercase tracking-wide text-gray-400">{t('nutrition.currentFood')}</p>
+              <div className="mt-3 space-y-3">
+                <div>
+                  <p className="font-semibold text-gray-900">{brandInfo.dry}</p>
+                  <p className="text-xs text-gray-500">{Math.round(calorieSettings.dry)} kcal / 100g</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900">{brandInfo.wet}</p>
+                  <p className="text-xs text-gray-500">{Math.round(calorieSettings.wet)} kcal / 100g</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900">{brandInfo.treat}</p>
+                  <p className="text-xs text-gray-500">{Math.round(calorieSettings.treat)} kcal / 100g</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFoodSettings(true)}
+                className="mt-4 w-full rounded-2xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:border-indigo-200 hover:text-indigo-600"
+              >
+                {t('nutrition.updateFoodInfo')}
+              </button>
+            </div>
           </div>
         </div>
-      </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-3xl bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-gray-500">{t('nutrition.weightTrendTitle')}</p>
               <p className="text-sm text-gray-400">{t('nutrition.weightTrendSubtitle')}</p>
             </div>
-            {selectedCat && weightLogs.length > 0 && (
-              <p className="text-xs text-gray-500">
-                {i18n.language === 'ko' ? '체중 기록을 탭하여 수정/삭제할 수 있습니다.' : 'Tap a weight entry to edit/delete.'}
-              </p>
-            )}
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              {selectedCat && weightLogs.length > 0 && (
+                <p>{i18n.language === 'ko' ? '체중 기록을 탭하여 수정/삭제할 수 있습니다.' : 'Tap a weight entry to edit/delete.'}</p>
+              )}
+              {selectedCat && (
+                <button
+                  onClick={handleQuickAddWeight}
+                  className="rounded-full border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
+                >
+                  + {i18n.language === 'ko' ? '체중 추가' : 'Add weight'}
+                </button>
+              )}
+            </div>
           </div>
           <div className="mt-6">
             {selectedCat && weightLogs.length > 0 ? (
@@ -480,47 +597,6 @@ function NutritionTracker() {
                 <p>{tip}</p>
               </div>
             ))}
-          </div>
-        </div>
-
-        <div className="rounded-3xl bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold text-gray-500">{t('nutrition.catSnapshotTitle')}</p>
-          <div className="mt-4 space-y-4 text-sm text-gray-600">
-            <div className="flex items-center justify-between">
-              <span>{t('nutrition.statLabels.currentWeight')}</span>
-              <span className="text-lg font-semibold text-gray-900">{selectedCat ? `${selectedCat.weight} kg` : '--'}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>{t('nutrition.statLabels.bodyCondition')}</span>
-              <span className="font-semibold text-emerald-600">{t('nutrition.statLabels.ideal')}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>{t('nutrition.statLabels.calorieGoal')}</span>
-              <span className="text-lg font-semibold text-gray-900">{summary.caloriesGoal} kcal</span>
-            </div>
-          </div>
-          <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-sm text-gray-600">
-            <p className="text-xs uppercase tracking-wide text-gray-400">{t('nutrition.currentFood')}</p>
-            <div className="mt-3 space-y-3">
-              <div>
-                <p className="font-semibold text-gray-900">{brandInfo.dry}</p>
-                <p className="text-xs text-gray-500">{Math.round(calorieSettings.dry)} kcal / 100g</p>
-              </div>
-              <div>
-                <p className="font-semibold text-gray-900">{brandInfo.wet}</p>
-                <p className="text-xs text-gray-500">{Math.round(calorieSettings.wet)} kcal / 100g</p>
-              </div>
-              <div>
-                <p className="font-semibold text-gray-900">{brandInfo.treat}</p>
-                <p className="text-xs text-gray-500">{Math.round(calorieSettings.treat)} kcal / 100g</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowFoodSettings(true)}
-              className="mt-4 w-full rounded-2xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:border-indigo-200 hover:text-indigo-600"
-            >
-              {t('nutrition.updateFoodInfo')}
-            </button>
           </div>
         </div>
       </section>

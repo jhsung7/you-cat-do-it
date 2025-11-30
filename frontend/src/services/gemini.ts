@@ -839,47 +839,4 @@ JSON response format:
   }
 };
 
-export const generateDiary = async (
-  date: string,
-  healthLog: any,
-  catProfile: any,
-  style: 'cute' | 'cynical' | 'philosophical' | 'humorous' = 'cute',
-  language: 'ko' | 'en' = 'ko'
-) => {
-  try {
-    if (!genAI && !proxyUrl) {
-      return language === 'ko'
-        ? '오늘도 평범한 하루였다. 밥 먹고, 잠 자고, 집사를 귀찮게 했다. 😺'
-        : 'Another ordinary day. Ate, slept, annoyed my human. 😺';
-    }
-
-    const stylePrompts = {
-      ko: {
-        cute: '귀엽고 사랑스러운',
-        cynical: '냉소적이고 까칠한',
-        philosophical: '철학적이고 사색적인',
-        humorous: '유머러스하고 재치있는',
-      },
-      en: {
-        cute: 'cute and adorable',
-        cynical: 'cynical and snarky',
-        philosophical: 'philosophical and contemplative',
-        humorous: 'humorous and witty',
-      }
-    };
-
-    const prompt = language === 'ko'
-      ? `${catProfile.name}의 오늘(${date}) 일기를 ${stylePrompts.ko[style]} 고양이 시점에서 100-150자로 작성해주세요. 이모지 1-2개 포함. 오늘: 사료 ${healthLog.foodAmount}g, 물 ${healthLog.waterAmount}ml, 기분 ${healthLog.mood}`
-      : `Write a ${stylePrompts.en[style]} diary entry from ${catProfile.name}'s perspective for ${date} in 100-150 characters. Include 1-2 emojis. Today: Food ${healthLog.foodAmount}g, Water ${healthLog.waterAmount}ml, Mood ${healthLog.mood}`;
-
-    const text = await generateText(prompt);
-    return text;
-  } catch (error) {
-    console.error('Diary generation error:', error);
-    return language === 'ko'
-      ? '오늘도 평범한 하루였다. 밥 먹고, 잠 자고, 집사를 귀찮게 했다. 😺'
-      : 'Another ordinary day. Ate, slept, annoyed my human. 😺';
-  }
-};
-
-export default { chatWithAI, analyzeSymptoms, generateDiary };
+export default { chatWithAI, analyzeSymptoms };
