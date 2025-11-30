@@ -5,45 +5,6 @@ import { useHealthStore } from '../store/healthStore'
 import { HealthAnomaly, Medication } from '../types'
 import { defaultMedications, loadMedicationsForCat, saveMedicationsForCat } from '../utils/medicationStorage'
 
-const reminders = [
-  { id: 'rem-1', title: 'Hairball Supplement Due', description: 'Today', color: 'bg-amber-50 border-amber-100 text-amber-900' },
-  { id: 'rem-2', title: 'Flea Prevention', description: 'Due in 5 days', color: 'bg-blue-50 border-blue-100 text-blue-900' },
-]
-
-const medicationHistory = [
-  {
-    id: 'hist-1',
-    name: 'Antibiotics (Amoxicillin)',
-    dosage: '50mg',
-    period: 'Oct 1, 2025 - Oct 14, 2025',
-    reason: 'Upper respiratory infection',
-  },
-  {
-    id: 'hist-2',
-    name: 'Pain Relief (Meloxicam)',
-    dosage: '0.5ml',
-    period: 'Sep 15, 2025 - Sep 20, 2025',
-    reason: 'Post-dental cleaning',
-  },
-]
-
-const hospitalNotes = [
-  {
-    id: 'visit-1',
-    title: 'Next Vet Visit',
-    date: 'Dec 20, 2025',
-    location: 'Happy Paws Animal Hospital',
-    notes: 'Annual wellness exam and booster',
-  },
-  {
-    id: 'visit-2',
-    title: 'Dental Follow-up',
-    date: 'Jan 05, 2026',
-    location: 'Downtown Cat Clinic',
-    notes: 'Check healing progress after cleaning',
-  },
-]
-
 const anomalyMetricLabel = (metric: 'food' | 'water' | 'litter', language: string) => {
   switch (metric) {
     case 'food':
@@ -107,11 +68,6 @@ function HealthRecords() {
   const catSymptoms = selectedCat ? symptoms : []
   const storeAnomalies = useHealthStore((state) => (selectedCat ? state.anomaliesByCat[selectedCat.id] : undefined))
   const anomalies: HealthAnomaly[] = storeAnomalies || []
-  const healthLogTitle = selectedCat
-    ? i18n.language === 'ko'
-      ? `${selectedCat.name} ${t('healthLog.title')}`
-      : `${selectedCat.name}'s Health Log`
-    : ''
   const sortedVisits = [...vetVisits].sort((a, b) => a.timestamp - b.timestamp)
   const noMedicationText = t('medicationsPage.none', {
     defaultValue: i18n.language === 'ko' ? '등록된 약이 없습니다.' : 'No medications yet.',
@@ -484,21 +440,44 @@ function HealthRecords() {
         <div className="space-y-4" id="appointments">
           <div className="rounded-3xl bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold text-gray-500">{t('medicationsPage.reminders')}</p>
-            <div className="mt-4 space-y-3">
-              {reminders.map((rem) => (
-                <div key={rem.id} className={`rounded-2xl border p-4 ${rem.color}`}>
-                  <p className="text-sm font-semibold">{rem.title}</p>
-                  <p className="text-xs text-gray-600">{rem.description}</p>
-                </div>
-              ))}
-              {hospitalNotes.map((note) => (
-                <div key={note.id} className="rounded-2xl border border-gray-100 p-4">
-                  <p className="text-sm font-semibold text-gray-900">{note.title}</p>
-                  <p className="text-xs text-gray-500">{note.date}</p>
-                  <p className="text-sm text-gray-600">{note.location}</p>
-                  <p className="text-xs text-gray-500">{note.notes}</p>
-                </div>
-              ))}
+            <div className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wide text-gray-400">
+                  {i18n.language === 'ko' ? '약 리마인더' : 'Medication reminders'}
+                </p>
+                {medications.length === 0 && (
+                  <p className="text-xs text-gray-500">
+                    {i18n.language === 'ko' ? '등록된 약이 없습니다.' : 'No medications yet.'}
+                  </p>
+                )}
+                {medications.map((med) => (
+                  <div key={med.id} className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                    <p className="text-sm font-semibold text-gray-900">{med.name}</p>
+                    <p className="text-xs text-gray-600">
+                      {med.frequency} · {i18n.language === 'ko' ? '다음 복용' : 'Next dose'}: {med.nextDose || '-'}
+                    </p>
+                    {med.instructions && <p className="mt-1 text-xs text-gray-500">{med.instructions}</p>}
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs uppercase tracking-wide text-gray-400">
+                  {i18n.language === 'ko' ? '병원 예약' : 'Vet appointments'}
+                </p>
+                {sortedVisits.length === 0 && (
+                  <p className="text-xs text-gray-500">
+                    {i18n.language === 'ko' ? '예정된 진료가 없습니다.' : 'No appointments scheduled.'}
+                  </p>
+                )}
+                {sortedVisits.map((visit) => (
+                  <div key={visit.id} className="rounded-2xl border border-gray-100 p-4">
+                    <p className="text-sm font-semibold text-gray-900">{visit.hospitalName}</p>
+                    <p className="text-xs text-gray-500">{visit.date}</p>
+                    {visit.visitReason && <p className="text-xs text-gray-500">{visit.visitReason}</p>}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -566,12 +545,9 @@ function HealthRecords() {
 
       <section className="rounded-3xl bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
-          <div>
-            {healthLogTitle && (
-              <p className="text-sm font-semibold text-gray-500">{healthLogTitle}</p>
-            )}
-            <p className="text-sm text-gray-400">{i18n.language === 'ko' ? '저장된 증상 기록' : 'Logged symptoms from Symptom Checker'}</p>
-          </div>
+          <p className="text-sm font-semibold text-gray-500">
+            {i18n.language === 'ko' ? '저장된 증상 기록' : 'Logged symptoms'}
+          </p>
         </div>
         {catSymptoms.length === 0 ? (
           <p className="mt-4 text-sm text-gray-500">{i18n.language === 'ko' ? '증상 기록이 없습니다.' : 'No symptoms logged yet.'}</p>
@@ -609,14 +585,9 @@ function HealthRecords() {
           </div>
         </div>
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {medicationHistory.map((item) => (
-            <div key={item.id} className="rounded-2xl border border-gray-100 p-5">
-              <p className="text-base font-semibold text-gray-900">{item.name}</p>
-              <p className="text-sm text-gray-600">{item.dosage}</p>
-              <p className="text-xs text-gray-500">{item.period}</p>
-              <p className="text-xs text-gray-500">{item.reason}</p>
-            </div>
-          ))}
+          <p className="text-sm text-gray-500">
+            {i18n.language === 'ko' ? '저장된 투약 기록이 없습니다.' : 'No medication history yet.'}
+          </p>
         </div>
       </section>
     </div>

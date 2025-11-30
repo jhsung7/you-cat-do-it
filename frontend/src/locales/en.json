@@ -191,7 +191,7 @@
     "title": "'s Health Log",
     "selectCatFirst": "Please select a cat",
     "selectCatDescription": "Select a cat from the menu above to manage health records",
-    "pageDescription": "Keep health records, meds, and vet visits organized at a glance.",
+    "pageDescription": "Monitor symptom records, meds, and vet visits",
     "backButton": "Back",
     "addTodayLog": "Add Today's Log",
     "noLogs": "No logs yet",
