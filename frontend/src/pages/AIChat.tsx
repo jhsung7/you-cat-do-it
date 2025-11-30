@@ -52,6 +52,7 @@ function AIChat() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [savedConversations, setSavedConversations] = useState<any[]>([]);
   const conversationIdRef = useRef<string>(crypto.randomUUID());
+  const streamingMessageIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (selectedCat) {
@@ -188,6 +189,17 @@ function AIChat() {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    // Add placeholder assistant message for streaming updates
+    setMessages(prev => {
+      const placeholder: Message = {
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+      };
+      const updated = [...prev, placeholder];
+      streamingMessageIndexRef.current = updated.length - 1;
+      return updated;
+    });
 
     try {
       const recentLogs = selectedCat ? getRecentLogs(selectedCat.id, 7) : [];
@@ -206,25 +218,39 @@ function AIChat() {
         i18n.language as 'ko' | 'en',
         conversationHistory,
         anomalies,
-        symptomHistory
+        symptomHistory,
+        (partial) => {
+          setMessages((prev) => {
+            if (streamingMessageIndexRef.current === null) return prev;
+            const updated = [...prev];
+            const idx = streamingMessageIndexRef.current;
+            if (!updated[idx]) return prev;
+            updated[idx] = { ...updated[idx], content: partial };
+            return updated;
+          });
+        }
       );
 
-      const aiMessage: Message = {
-        role: 'assistant',
-        content: response.answer,
-        timestamp: new Date(),
-        reasoning: response.reasoning,
-        confidence: response.confidence,
-        followUpQuestions: response.followUpQuestions,
-        // Only keep real URLs; skip generic search fallbacks for clarity
-        sources: response.sources?.map((src) => (src.url ? { ...src } : { ...src, url: undefined })),
-      };
-
       setMessages(prev => {
-        const updatedMessages = [...prev, aiMessage];
+        const updated = [...prev];
+        const aiMessage: Message = {
+          role: 'assistant',
+          content: response.answer,
+          timestamp: new Date(),
+          reasoning: response.reasoning,
+          confidence: response.confidence,
+          followUpQuestions: response.followUpQuestions,
+          // Only keep real URLs; skip generic search fallbacks for clarity
+          sources: response.sources?.map((src) => (src.url ? { ...src } : { ...src, url: undefined })),
+        };
+        if (streamingMessageIndexRef.current !== null && updated[streamingMessageIndexRef.current]) {
+          updated[streamingMessageIndexRef.current] = { ...updated[streamingMessageIndexRef.current], ...aiMessage };
+        } else {
+          updated.push(aiMessage);
+        }
         // 대화 저장 (비동기적으로)
-        setTimeout(() => saveConversationToStorage(updatedMessages), 0);
-        return updatedMessages;
+        setTimeout(() => saveConversationToStorage(updated), 0);
+        return updated;
       });
     } catch (error) {
       console.error('AI Chat Error:', error);
@@ -233,8 +259,15 @@ function AIChat() {
         content: t('aiChat.errorMessage'),
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => {
+        const updated = [...prev];
+        if (streamingMessageIndexRef.current !== null) {
+          updated.splice(streamingMessageIndexRef.current, 1);
+        }
+        return [...updated, errorMessage];
+      });
     } finally {
+      streamingMessageIndexRef.current = null;
       setIsLoading(false);
     }
   };

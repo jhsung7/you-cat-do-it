@@ -45,6 +45,41 @@ type AiSummary = {
   mode: 'alert' | 'default'
 }
 
+const emphasizeImportantWords = (text: string) => {
+  const keywords = [
+    'drop',
+    'low',
+    'high',
+    'increase',
+    'decrease',
+    'warning',
+    'critical',
+    '위험',
+    '주의',
+    '낮음',
+    '높음',
+    '감소',
+    '증가',
+  ]
+  const parts = text.split(/(\s+)/)
+  return (
+    <>
+      {parts.map((part, idx) => {
+        const hasNumber = /\d/.test(part)
+        const isKeyword = keywords.some((kw) => part.toLowerCase().includes(kw.toLowerCase()))
+        if (hasNumber || isKeyword) {
+          return (
+            <strong key={`${part}-${idx}`} className="font-semibold">
+              {part}
+            </strong>
+          )
+        }
+        return <span key={`${part}-${idx}`}>{part}</span>
+      })}
+    </>
+  )
+}
+
 const buildAiSummary = (
   params: {
     cat?: Cat | null
@@ -1197,7 +1232,7 @@ function DashboardModern() {
                         className="flex items-start gap-2 rounded-2xl border border-pink-100 bg-[#FDECF3] px-3 py-2 text-sm text-gray-800 shadow-sm"
                       >
                         <span className={`pt-0.5 ${iconColor}`}>{icon}</span>
-                        <span className="flex-1 leading-snug">{item.text}</span>
+                        <span className="flex-1 leading-snug text-gray-900">{emphasizeImportantWords(item.text)}</span>
                       </div>
                     )
                   })}

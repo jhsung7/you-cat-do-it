@@ -19,9 +19,37 @@ if (proxyUrl && import.meta.env.DEV) {
 }
 
 type Embedding = number[];
+const EMBEDDING_STORAGE_KEY = 'vet-knowledge-embeddings-v1';
 const knowledgeEmbeddings: { ko?: Record<string, Embedding>; en?: Record<string, Embedding> } = {};
 
-const generateText = async (prompt: string, modelName = MODEL_NAME): Promise<string> => {
+const loadPersistedEmbeddings = () => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const stored = localStorage.getItem(EMBEDDING_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      knowledgeEmbeddings.ko = parsed.ko || knowledgeEmbeddings.ko;
+      knowledgeEmbeddings.en = parsed.en || knowledgeEmbeddings.en;
+    }
+  } catch (err) {
+    console.warn('Failed to load cached embeddings', err);
+  }
+};
+
+const persistEmbeddings = () => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(EMBEDDING_STORAGE_KEY, JSON.stringify(knowledgeEmbeddings));
+  } catch (err) {
+    console.warn('Failed to persist embeddings', err);
+  }
+};
+
+if (typeof window !== 'undefined') {
+  loadPersistedEmbeddings();
+}
+
+const generateText = async (prompt: string, modelName = MODEL_NAME, onStreamUpdate?: (partial: string) => void): Promise<string> => {
   // Prefer server proxy to keep API key on the backend
   if (proxyUrl) {
     const res = await fetch(proxyUrl, {
@@ -39,6 +67,18 @@ const generateText = async (prompt: string, modelName = MODEL_NAME): Promise<str
 
   if (!genAI) throw new Error('Gemini client not initialized.');
   const model = genAI.getGenerativeModel({ model: modelName });
+
+  if (onStreamUpdate) {
+    const streamResult = await model.generateContentStream(prompt);
+    let streamed = '';
+    for await (const chunk of streamResult.stream) {
+      const chunkText = chunk.text();
+      streamed += chunkText;
+      onStreamUpdate(streamed);
+    }
+    return streamed.trim();
+  }
+
   const result = await model.generateContent(prompt);
   return result.response.text().trim();
 };
@@ -56,13 +96,16 @@ const embedText = async (text: string): Promise<Embedding | null> => {
 };
 
 const buildKnowledgeEmbeddings = async (language: 'ko' | 'en') => {
-  if (knowledgeEmbeddings[language] || !genAI) return;
+  if (knowledgeEmbeddings[language]) return;
+  if (!genAI) return;
+
   const map: Record<string, Embedding> = {};
   for (const item of vetKnowledgeBase) {
     const emb = await embedText(item.content[language]);
     if (emb) map[item.id] = emb;
   }
   knowledgeEmbeddings[language] = map;
+  persistEmbeddings();
 };
 
 const cosineSim = (a: Embedding, b: Embedding) => {
@@ -346,7 +389,8 @@ export const chatWithAI = async (
   language: 'ko' | 'en' = 'ko',
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
   anomalies: HealthAnomaly[] = [],
-  symptoms: Symptom[] = []
+  symptoms: Symptom[] = [],
+  onStreamUpdate?: (partial: string) => void
 ): Promise<{
   answer: string;
   reasoning?: string;
@@ -611,7 +655,7 @@ Response:
       : `User question: ${userMessage}\n\nRespond in the JSON format above.`;
 
     logDebug('🤖 Sending to Gemini 2.5 Flash...');
-    let text = await generateText(contextPrompt);
+    let text = await generateText(contextPrompt, MODEL_NAME, onStreamUpdate);
 
     // JSON 추출
     if (text.includes('```json')) {
