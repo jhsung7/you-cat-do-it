@@ -53,6 +53,12 @@ function AIChat() {
   const [savedConversations, setSavedConversations] = useState<any[]>([]);
   const conversationIdRef = useRef<string>(crypto.randomUUID());
 
+  useEffect(() => {
+    if (selectedCat) {
+      loadSymptoms(selectedCat.id);
+    }
+  }, [selectedCat, loadSymptoms]);
+
   // 대화 기록을 localStorage에 저장 (최대 5개 대화)
   const saveConversationToStorage = (conversationMessages: Message[]) => {
     try {
@@ -595,8 +601,3 @@ function AIChat() {
 }
 
 export default AIChat;
-  useEffect(() => {
-    if (selectedCat) {
-      loadSymptoms(selectedCat.id);
-    }
-  }, [selectedCat, loadSymptoms]);
