@@ -502,18 +502,20 @@ function NutritionTracker() {
             </div>
             <div className="flex items-center gap-3 text-xs text-gray-500">
               {selectedCat && (
-                <button
-                  onClick={() => setShowWeightManager(true)}
-                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  {i18n.language === 'ko' ? '기록 관리' : 'Manage weights'}
-                </button>
-                <button
-                  onClick={openAddWeight}
-                  className="rounded-full border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
-                >
-                  + {i18n.language === 'ko' ? '체중 추가' : 'Add weight'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowWeightManager(true)}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    {i18n.language === 'ko' ? '기록 관리' : 'Manage weights'}
+                  </button>
+                  <button
+                    onClick={openAddWeight}
+                    className="rounded-full border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
+                  >
+                    + {i18n.language === 'ko' ? '체중 추가' : 'Add weight'}
+                  </button>
+                </div>
               )}
             </div>
           </div>
