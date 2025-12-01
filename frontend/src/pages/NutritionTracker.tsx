@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useCatStore } from '../store/catStore'
 import { useHealthStore } from '../store/healthStore'
 import WeightChart from '../components/WeightChart'
+import WeightLogger from '../components/WeightLogger'
 import { HealthLog, WeightLog } from '../types'
 import { findBrandCalories } from '../data/foodBrands'
 import { weightLogStorage } from '../services/storage'
@@ -51,6 +52,9 @@ function NutritionTracker() {
   })
   const [showGoalEditor, setShowGoalEditor] = useState(false)
   const [goalDraft, setGoalDraft] = useState<NutritionGoals>(nutritionGoals)
+  const [showWeightModal, setShowWeightModal] = useState(false)
+  const [editingWeightLog, setEditingWeightLog] = useState<WeightLog | null>(null)
+  const [showWeightManager, setShowWeightManager] = useState(false)
 
   useEffect(() => {
     if (selectedCat) {
@@ -67,23 +71,10 @@ function NutritionTracker() {
 
   const todayStr = formatLocalDate(new Date())
   const todaysLogs = catLogs.filter((log) => log.date === todayStr)
-  const handleQuickAddWeight = () => {
+  const openAddWeight = () => {
     if (!selectedCat) return
-    const input = window.prompt(i18n.language === 'ko' ? '새 체중(kg)을 입력하세요.' : 'Enter new weight (kg).')
-    if (!input) return
-    const val = Number(input)
-    if (Number.isNaN(val) || val <= 0) return
-    const now = new Date()
-    const entry: WeightLog = {
-      id: crypto.randomUUID(),
-      catId: selectedCat.id,
-      date: formatLocalDate(now),
-      timestamp: now.getTime(),
-      weight: val,
-      notes: '',
-    }
-    weightLogStorage.add(entry)
-    loadWeightLogs(selectedCat.id)
+    setEditingWeightLog(null)
+    setShowWeightModal(true)
   }
 
   useEffect(() => {
@@ -368,34 +359,22 @@ function NutritionTracker() {
     if (!selectedCat) return
     weightLogStorage.delete(id)
     loadWeightLogs(selectedCat.id)
+    if (editingWeightLog?.id === id) {
+      setEditingWeightLog(null)
+    }
+    setShowWeightModal(false)
   }
 
-  const handleEditWeight = (log: WeightLog) => {
-    const input = window.prompt(
-      i18n.language === 'ko' ? '새 체중(kg)을 입력하세요.' : 'Enter new weight (kg).',
-      String(log.weight)
-    )
-    if (!input) return
-    const newWeight = Number(input)
-    if (Number.isNaN(newWeight) || newWeight <= 0) return
-    const updated: WeightLog = { ...log, weight: newWeight }
-    handleDeleteWeight(log.id)
-    const timeStr = new Date(log.timestamp).toLocaleTimeString('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
-    addHealthLog({
-      id: crypto.randomUUID(),
-      catId: selectedCat!.id,
-      date: log.date,
-      time: timeStr,
-      timestamp: log.timestamp,
-      type: 'weight',
-      notes: log.notes,
-    })
-    weightLogStorage.add(updated)
-    loadWeightLogs(selectedCat!.id)
+  const handleSaveWeightLog = (log: WeightLog) => {
+    if (!selectedCat) return
+    if (editingWeightLog) {
+      weightLogStorage.delete(editingWeightLog.id)
+    }
+    const nextLog: WeightLog = { ...log, catId: selectedCat.id }
+    weightLogStorage.add(nextLog)
+    loadWeightLogs(selectedCat.id)
+    setShowWeightModal(false)
+    setEditingWeightLog(null)
   }
 
   return (
@@ -522,12 +501,15 @@ function NutritionTracker() {
               <p className="text-sm text-gray-400">{t('nutrition.weightTrendSubtitle')}</p>
             </div>
             <div className="flex items-center gap-3 text-xs text-gray-500">
-              {selectedCat && weightLogs.length > 0 && (
-                <p>{i18n.language === 'ko' ? '체중 기록을 탭하여 수정/삭제할 수 있습니다.' : 'Tap a weight entry to edit/delete.'}</p>
-              )}
               {selectedCat && (
                 <button
-                  onClick={handleQuickAddWeight}
+                  onClick={() => setShowWeightManager(true)}
+                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  {i18n.language === 'ko' ? '기록 관리' : 'Manage weights'}
+                </button>
+                <button
+                  onClick={openAddWeight}
                   className="rounded-full border border-indigo-200 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
                 >
                   + {i18n.language === 'ko' ? '체중 추가' : 'Add weight'}
@@ -539,44 +521,6 @@ function NutritionTracker() {
             {selectedCat && weightLogs.length > 0 ? (
               <div className="space-y-4">
                 <WeightChart logs={weightLogs} />
-                <div className="rounded-2xl border border-gray-100 p-4 text-sm text-gray-700">
-                  <p className="text-xs uppercase tracking-wide text-gray-400">
-                    {i18n.language === 'ko' ? '최근 체중 기록' : 'Recent weights'}
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    {[...weightLogs].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5).map((log) => (
-                      <div
-                        key={log.id}
-                        className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2 hover:border-indigo-200"
-                      >
-                        <div>
-                          <p className="font-semibold text-gray-900">{log.weight} kg</p>
-                          <p className="text-xs text-gray-500">
-                            {new Date(log.timestamp).toLocaleString(i18n.language === 'ko' ? 'ko-KR' : 'en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                            })}
-                          </p>
-                        </div>
-                        <div className="flex gap-2 text-xs font-semibold">
-                          <button
-                            onClick={() => handleEditWeight(log)}
-                            className="rounded-full border border-indigo-200 px-2 py-1 text-indigo-600 hover:bg-indigo-50"
-                          >
-                            {t('catProfile.edit')}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteWeight(log.id)}
-                            className="rounded-full border border-red-200 px-2 py-1 text-red-600 hover:bg-red-50"
-                          >
-                            {t('catProfile.delete')}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
@@ -720,6 +664,77 @@ function NutritionTracker() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showWeightModal && selectedCat && (
+        <WeightLogger
+          catId={selectedCat.id}
+          currentWeight={selectedCat.weight}
+          initialLog={editingWeightLog ?? undefined}
+          mode={editingWeightLog ? 'edit' : 'add'}
+          onSave={handleSaveWeightLog}
+          onClose={() => {
+            setShowWeightModal(false)
+            setEditingWeightLog(null)
+          }}
+          onDelete={editingWeightLog ? handleDeleteWeight : undefined}
+        />
+      )}
+
+      {showWeightManager && selectedCat && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 py-6">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold text-gray-900">
+                {i18n.language === 'ko' ? '체중 기록 관리' : 'Manage weight entries'}
+              </h3>
+              <button
+                onClick={() => setShowWeightManager(false)}
+                className="text-sm font-semibold text-gray-500 hover:text-gray-700"
+              >
+                {i18n.language === 'ko' ? '닫기' : 'Close'}
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {[...weightLogs]
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .map((log) => (
+                  <div key={log.id} className="flex items-center justify-between rounded-2xl border border-gray-100 px-4 py-3 text-sm text-gray-700">
+                    <div>
+                      <p className="font-semibold text-gray-900">{log.weight} kg</p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(log.timestamp).toLocaleDateString(i18n.language === 'ko' ? 'ko-KR' : 'en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 text-xs font-semibold">
+                      <button
+                        onClick={() => {
+                          setEditingWeightLog(log)
+                          setShowWeightModal(true)
+                        }}
+                        className="rounded-full border border-indigo-200 px-3 py-1 text-indigo-600 hover:bg-indigo-50"
+                      >
+                        {t('catProfile.edit')}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteWeight(log.id)}
+                        className="rounded-full border border-red-200 px-3 py-1 text-red-600 hover:bg-red-50"
+                      >
+                        {t('catProfile.delete')}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              {weightLogs.length === 0 && (
+                <p className="text-sm text-gray-500">{i18n.language === 'ko' ? '체중 기록이 없습니다.' : 'No weight records yet.'}</p>
+              )}
+            </div>
           </div>
         </div>
       )}

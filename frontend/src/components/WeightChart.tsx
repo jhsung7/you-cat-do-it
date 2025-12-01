@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, TooltipProps } from 'recharts';
 import { WeightLog } from '../types';
 
 interface WeightChartProps {
@@ -15,14 +16,27 @@ function WeightChart({ logs, targetWeight }: WeightChartProps) {
   const sortedLogs = [...logs].sort((a, b) => a.timestamp - b.timestamp);
 
   // 차트 데이터 준비
-  const chartData = sortedLogs.map((log) => ({
-    date: new Date(log.date).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
-      month: 'short',
-      day: 'numeric',
-    }),
-    weight: log.weight,
-    fullDate: log.date,
-  }));
+  const chartData = sortedLogs.map((log) => {
+    const dateObj = log.timestamp ? new Date(log.timestamp) : new Date(log.date);
+    return {
+      id: log.id,
+      date: dateObj.toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
+        month: 'short',
+        day: 'numeric',
+      }),
+      weight: log.weight,
+      fullDate: log.date,
+      timestamp: log.timestamp,
+      notes: log.notes,
+    };
+  });
+
+  const logMap = useMemo(() => {
+    return sortedLogs.reduce<Record<string, WeightLog>>((acc, log) => {
+      acc[log.id] = log;
+      return acc;
+    }, {});
+  }, [sortedLogs]);
 
   // 체중 변화 계산
   const getWeightChange = () => {
@@ -64,6 +78,25 @@ function WeightChart({ logs, targetWeight }: WeightChartProps) {
   const minWeight = Math.min(...weights);
   const maxWeight = Math.max(...weights);
   const padding = (maxWeight - minWeight) * 0.2 || 0.5;
+
+  const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
+    if (!active || !payload || payload.length === 0) return null;
+    const data = payload[0].payload as typeof chartData[number];
+    const log = logMap[data.id];
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
+        <p className="text-sm font-semibold text-gray-900">{data.weight.toFixed(2)}kg</p>
+        <p className="text-xs text-gray-500">
+          {new Date(data.timestamp).toLocaleDateString(lang === 'ko' ? 'ko-KR' : 'en-US', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        </p>
+        {log?.notes && <p className="mt-1 text-xs text-gray-600">{log.notes}</p>}
+      </div>
+    );
+  };
 
   if (sortedLogs.length === 0) {
     return (
@@ -154,13 +187,7 @@ function WeightChart({ logs, targetWeight }: WeightChartProps) {
             tickFormatter={(value) => `${value.toFixed(1)}kg`}
           />
           <Tooltip
-            contentStyle={{
-              backgroundColor: '#FFFFFF',
-              border: '1px solid #E5E7EB',
-              borderRadius: '8px',
-              fontSize: '14px',
-            }}
-            formatter={(value: number) => [`${value.toFixed(2)}kg`, lang === 'ko' ? '체중' : 'Weight']}
+            content={<CustomTooltip />}
           />
           {targetWeight && (
             <ReferenceLine

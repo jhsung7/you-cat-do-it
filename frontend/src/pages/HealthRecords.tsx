@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useCatStore } from '../store/catStore'
 import { useHealthStore } from '../store/healthStore'
@@ -48,19 +48,23 @@ function HealthRecords() {
     hospitalName: '',
     visitReason: '',
   })
+  const medicationsLoadedRef = useRef(false)
 
   useEffect(() => {
     if (selectedCat) {
       loadSymptoms(selectedCat.id)
       loadVetVisits(selectedCat.id)
-      setMedications(loadMedicationsForCat(selectedCat.id))
+      const loaded = loadMedicationsForCat(selectedCat.id)
+      setMedications(loaded)
+      medicationsLoadedRef.current = true
     } else {
       setMedications(defaultMedications)
+      medicationsLoadedRef.current = false
     }
   }, [selectedCat, loadSymptoms, loadVetVisits])
 
   useEffect(() => {
-    if (selectedCat) {
+    if (selectedCat && medicationsLoadedRef.current) {
       saveMedicationsForCat(selectedCat.id, medications)
     }
   }, [medications, selectedCat])

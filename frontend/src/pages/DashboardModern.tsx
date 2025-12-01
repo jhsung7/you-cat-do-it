@@ -400,6 +400,7 @@ function DashboardModern() {
   })
   const [isSavingCat, setIsSavingCat] = useState(false)
   const [catFormError, setCatFormError] = useState<string | null>(null)
+  const medicationsLoadedRef = useRef(false)
 
   useEffect(() => {
     if (selectedCat) {
@@ -410,14 +411,17 @@ function DashboardModern() {
 
   useEffect(() => {
     if (selectedCat) {
-      setManagedMedications(loadMedicationsForCat(selectedCat.id))
+      const loaded = loadMedicationsForCat(selectedCat.id)
+      setManagedMedications(loaded)
+      medicationsLoadedRef.current = true
     } else {
       setManagedMedications(defaultMedications)
+      medicationsLoadedRef.current = false
     }
   }, [selectedCat])
 
   useEffect(() => {
-    if (selectedCat) {
+    if (selectedCat && medicationsLoadedRef.current) {
       saveMedicationsForCat(selectedCat.id, managedMedications)
     }
   }, [managedMedications, selectedCat])
@@ -2231,8 +2235,8 @@ function DashboardModern() {
       )}
 
       {showDetailedLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-6">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-semibold text-gray-900">{t('healthLog.addTodayLog')}</h3>
             <form onSubmit={handleDetailedLogSubmit} className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>

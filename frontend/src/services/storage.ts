@@ -110,7 +110,35 @@ export const symptomStorage = {
 export const weightLogStorage = {
   getAll(): WeightLog[] {
     const data = localStorage.getItem(WEIGHT_LOGS_KEY);
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    try {
+      const parsed = JSON.parse(data) as WeightLog[];
+      let mutated = false;
+
+      const normalized = parsed
+        .map((log) => {
+          const timestamp =
+            typeof log.timestamp === 'number' && Number.isFinite(log.timestamp)
+              ? log.timestamp
+              : log.date
+              ? new Date(`${log.date}T12:00:00`).getTime()
+              : undefined;
+          if (!timestamp || Number.isNaN(timestamp)) return null;
+          const date = log.date || new Date(timestamp).toISOString().split('T')[0];
+          if (log.timestamp !== timestamp || log.date !== date) mutated = true;
+          return { ...log, timestamp, date };
+        })
+        .filter((log): log is WeightLog => log !== null)
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      if (mutated) {
+        persist(WEIGHT_LOGS_KEY, normalized);
+      }
+
+      return normalized;
+    } catch {
+      return [];
+    }
   },
 
   getByCatId(catId: string): WeightLog[] {

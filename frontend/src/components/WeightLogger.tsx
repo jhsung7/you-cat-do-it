@@ -7,15 +7,18 @@ interface WeightLoggerProps {
   currentWeight: number;
   onSave: (log: WeightLog) => void;
   onClose: () => void;
+  initialLog?: WeightLog;
+  mode?: 'add' | 'edit';
+  onDelete?: (id: string) => void;
 }
 
-function WeightLogger({ catId, currentWeight, onSave, onClose }: WeightLoggerProps) {
+function WeightLogger({ catId, currentWeight, onSave, onClose, initialLog, mode = 'add', onDelete }: WeightLoggerProps) {
   const { i18n } = useTranslation();
   const lang = i18n.language as 'ko' | 'en';
 
-  const [weight, setWeight] = useState(currentWeight.toString());
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
+  const [weight, setWeight] = useState((initialLog?.weight ?? currentWeight).toString());
+  const [date, setDate] = useState(initialLog?.date ?? new Date().toISOString().split('T')[0]);
+  const [notes, setNotes] = useState(initialLog?.notes ?? '');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +31,7 @@ function WeightLogger({ catId, currentWeight, onSave, onClose }: WeightLoggerPro
 
     const dateTime = new Date(date);
     const log: WeightLog = {
-      id: crypto.randomUUID(),
+      id: initialLog?.id ?? crypto.randomUUID(),
       catId,
       date,
       timestamp: dateTime.getTime(),
@@ -40,15 +43,16 @@ function WeightLogger({ catId, currentWeight, onSave, onClose }: WeightLoggerPro
     onClose();
   };
 
-  const weightDiff = parseFloat(weight) - currentWeight;
-  const weightDiffPercent = ((weightDiff / currentWeight) * 100).toFixed(1);
+  const baseline = initialLog?.weight ?? currentWeight;
+  const weightDiff = parseFloat(weight) - baseline;
+  const weightDiffPercent = baseline ? ((weightDiff / baseline) * 100).toFixed(1) : '0.0';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
         <div className="p-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">
-            ⚖️ {lang === 'ko' ? '체중 기록' : 'Weight Log'}
+            {mode === 'edit' ? (lang === 'ko' ? '체중 수정' : 'Edit weight') : (lang === 'ko' ? '체중 기록' : 'Weight Log')}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -123,6 +127,15 @@ function WeightLogger({ catId, currentWeight, onSave, onClose }: WeightLoggerPro
                 {lang === 'ko' ? '저장' : 'Save'}
               </button>
             </div>
+            {mode === 'edit' && onDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(initialLog!.id)}
+                className="w-full rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+              >
+                {lang === 'ko' ? '기록 삭제' : 'Delete entry'}
+              </button>
+            )}
           </form>
         </div>
       </div>
