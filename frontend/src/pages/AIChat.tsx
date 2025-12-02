@@ -373,15 +373,6 @@ function AIChat() {
                         </span>
                       </div>
                     )}
-
-                    <p className={`text-xs mt-1 ${
-                      message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
-                    }`}>
-                      {message.timestamp.toLocaleTimeString(i18n.language === 'ko' ? 'ko-KR' : 'en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </p>
                   </div>
                 </div>
 

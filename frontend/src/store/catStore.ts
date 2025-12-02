@@ -16,6 +16,7 @@ export interface Cat {
 interface CatStore {
   cats: Cat[];
   selectedCat: Cat | null;
+  selectedCatId: string | null;
   addCat: (cat: Omit<Cat, 'id'>) => void;
   updateCat: (id: string, cat: Partial<Cat>) => void;
   deleteCat: (id: string) => void;
@@ -28,6 +29,7 @@ export const useCatStore = create<CatStore>()(
     (set, get) => ({
       cats: [],
       selectedCat: null,
+      selectedCatId: null,
 
       loadCats: () => {
         // persist 미들웨어가 자동으로 로드하므로 여기서는 아무것도 안 함
@@ -43,6 +45,7 @@ export const useCatStore = create<CatStore>()(
         set((state) => ({
           cats: [...state.cats, newCat],
           selectedCat: newCat,
+          selectedCatId: newCat.id,
         }));
         
         console.log('✅ Cat added:', newCat.name);
@@ -57,6 +60,7 @@ export const useCatStore = create<CatStore>()(
             state.selectedCat?.id === id
               ? { ...state.selectedCat, ...updatedData }
               : state.selectedCat,
+          selectedCatId: state.selectedCatId,
         }));
         
         console.log('✅ Cat updated:', id);
@@ -66,9 +70,11 @@ export const useCatStore = create<CatStore>()(
         set((state) => {
           const remaining = state.cats.filter((cat) => cat.id !== id);
           const selectedCat = state.selectedCat?.id === id ? remaining[0] || null : state.selectedCat;
+          const selectedCatId = selectedCat ? selectedCat.id : null;
           return {
             cats: remaining,
             selectedCat,
+            selectedCatId,
           };
         });
         
@@ -78,16 +84,38 @@ export const useCatStore = create<CatStore>()(
       selectCat: (id) => {
         const cat = get().cats.find((c) => c.id === id);
         if (cat) {
-          set({ selectedCat: cat });
+          set({ selectedCat: cat, selectedCatId: id });
           console.log('🐱 Cat selected:', cat.name);
         } else {
-          set({ selectedCat: null });
+          set({ selectedCat: null, selectedCatId: null });
           console.log('⚠️ Cat not found:', id);
         }
       },
     }),
     {
       name: 'cat-storage',
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<CatStore> | undefined;
+        const merged = { ...currentState, ...persisted };
+
+        const cats = persisted?.cats ?? currentState.cats ?? [];
+        const storedSelectedId =
+          persisted?.selectedCatId || persisted?.selectedCat?.id || currentState.selectedCatId || currentState.selectedCat?.id;
+
+        if (cats.length === 0) {
+          return { ...merged, cats: [], selectedCat: null, selectedCatId: null };
+        }
+
+        const targetCat = storedSelectedId ? cats.find((c) => c.id === storedSelectedId) : null;
+        const fallbackCat = targetCat || cats[0];
+
+        return {
+          ...merged,
+          cats,
+          selectedCat: fallbackCat,
+          selectedCatId: fallbackCat?.id || null,
+        };
+      },
     }
   )
 );
