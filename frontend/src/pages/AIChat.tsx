@@ -343,7 +343,9 @@ function AIChat() {
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="bg-white rounded-lg shadow-md flex flex-col" style={{ height: 'calc(100vh - 250px)' }}>
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            {messages.map((message, index) => (
+            {messages
+              .filter((message) => Boolean(message.content && message.content.trim().length > 0))
+              .map((message, index) => (
               <div key={index} className="space-y-2">
                 <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
