@@ -289,21 +289,24 @@ const initialCatForm = {
   imageUrl: '',
 }
 
-const createInitialDetailedLog = () => ({
-  date: new Date().toISOString().split('T')[0],
-  time: new Date().toTimeString().slice(0, 5),
-  wetFoodAmount: '',
-  dryFoodAmount: '',
-  snackAmount: '',
-  waterAmount: '',
-  litterCount: '',
-  mood: 'normal' as 'happy' | 'normal' | 'sad' | 'angry',
-  playType: 'toys' as 'toys' | 'catWheel',
-  playDurationMinutes: '',
-  brushedTeeth: false,
-  dentalCareProduct: '',
-  notes: '',
-})
+const createInitialDetailedLog = () => {
+  const now = new Date()
+  return {
+    date: formatLocalDate(now), // use local timezone to avoid day-shift
+    time: now.toTimeString().slice(0, 5),
+    wetFoodAmount: '',
+    dryFoodAmount: '',
+    snackAmount: '',
+    waterAmount: '',
+    litterCount: '',
+    mood: 'normal' as 'happy' | 'normal' | 'sad' | 'angry',
+    playType: 'toys' as 'toys' | 'catWheel',
+    playDurationMinutes: '',
+    brushedTeeth: false,
+    dentalCareProduct: '',
+    notes: '',
+  }
+}
 
 const convertFileToBase64 = (file: File) =>
   new Promise<string>((resolve, reject) => {

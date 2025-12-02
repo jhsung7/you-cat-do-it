@@ -343,9 +343,12 @@ function AIChat() {
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="bg-white rounded-lg shadow-md flex flex-col" style={{ height: 'calc(100vh - 250px)' }}>
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            {messages
-              .filter((message) => Boolean(message.content && message.content.trim().length > 0))
-              .map((message, index) => (
+            {messages.map((message, index) => {
+              const hasVisibleContent = Boolean(
+                message.content && message.content.replace(/\s|\u00a0/g, '').length > 0
+              );
+              if (!hasVisibleContent) return null;
+              return (
               <div key={index} className="space-y-2">
                 <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
@@ -452,7 +455,7 @@ function AIChat() {
                   </div>
                 )}
               </div>
-            ))}
+            )})}
             
           
             {isLoading && (

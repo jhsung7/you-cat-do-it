@@ -60,39 +60,92 @@ const metricLabels: Record<'food' | 'water' | 'litter', string> = {
 
 const detectAnomalies = (catId: string, logs: HealthLog[]): HealthAnomaly[] => {
     const totals = windowedTotals(logs, TOTAL_WINDOW_DAYS);
-    if (totals.length < TOTAL_WINDOW_DAYS) return [];
 
     const previous = totals.slice(0, ROLLING_WINDOW_DAYS);
     const current = totals.slice(ROLLING_WINDOW_DAYS);
+    const latestDay = totals[totals.length - 1];
 
     const anomalies: HealthAnomaly[] = [];
+
+    const absoluteHigh: Record<'food' | 'water' | 'litter', number> = {
+        food: 600,      // grams per day
+        water: 600,     // ml per day
+        litter: 8,      // visits per day
+    };
 
     (['food', 'water', 'litter'] as const).forEach((metric) => {
         const prevAvg = averageMetric(previous, metric);
         const currentAvg = averageMetric(current, metric);
-        if (!prevAvg || currentAvg >= prevAvg) return;
+        const changePercent = prevAvg ? Math.round(((currentAvg - prevAvg) / prevAvg) * 100) : 0;
 
-        const dropRatio = (prevAvg - currentAvg) / prevAvg;
-        let threshold = metric === 'litter' ? 0.4 : metric === 'water' ? 0.4 : 0.3;
-        if (dropRatio < threshold) return;
+        // Detect sharp drops (existing behaviour)
+        if (prevAvg && currentAvg < prevAvg) {
+            const dropRatio = (prevAvg - currentAvg) / prevAvg;
+            const dropThreshold = metric === 'litter' ? 0.4 : metric === 'water' ? 0.4 : 0.3;
+            if (dropRatio >= dropThreshold) {
+                const severity: 'warning' | 'critical' = Math.abs(changePercent) >= 50 ? 'critical' : 'warning';
+                const description = `${metricLabels[metric]} dropped ${Math.abs(changePercent)}% over the last ${ROLLING_WINDOW_DAYS} days (from ${prevAvg.toFixed(1)} to ${currentAvg.toFixed(1)}).`;
+                const id = `${catId}-${metric}-drop-${current[current.length - 1]?.date || Date.now()}`;
+                anomalies.push({
+                    id,
+                    catId,
+                    metric,
+                    severity,
+                    description,
+                    changePercent,
+                    currentAverage: Number(currentAvg.toFixed(2)),
+                    previousAverage: Number(prevAvg.toFixed(2)),
+                    windowDays: ROLLING_WINDOW_DAYS,
+                    detectedAt: Date.now(),
+                });
+            }
+        }
 
-        const changePercent = Math.round(((currentAvg - prevAvg) / prevAvg) * 100);
-        const severity: 'warning' | 'critical' = Math.abs(changePercent) >= 50 ? 'critical' : 'warning';
-        const description = `${metricLabels[metric]} dropped ${Math.abs(changePercent)}% over the last ${ROLLING_WINDOW_DAYS} days (from ${prevAvg.toFixed(1)} to ${currentAvg.toFixed(1)}).`;
-        const id = `${catId}-${metric}-${current[current.length - 1]?.date || Date.now()}`;
+        // Detect spikes (large increases) using rolling window
+        if (prevAvg && currentAvg > prevAvg) {
+            const spikeMultiplier = metric === 'food' ? 1.6 : metric === 'water' ? 1.8 : 1.8;
+            if (currentAvg >= prevAvg * spikeMultiplier) {
+                const severity: 'warning' | 'critical' = changePercent >= 100 ? 'critical' : 'warning';
+                const description = `${metricLabels[metric]} spiked ${Math.abs(changePercent)}% over the last ${ROLLING_WINDOW_DAYS} days (from ${prevAvg.toFixed(1)} to ${currentAvg.toFixed(1)}).`;
+                const id = `${catId}-${metric}-spike-${current[current.length - 1]?.date || Date.now()}`;
+                anomalies.push({
+                    id,
+                    catId,
+                    metric,
+                    severity,
+                    description,
+                    changePercent,
+                    currentAverage: Number(currentAvg.toFixed(2)),
+                    previousAverage: Number(prevAvg.toFixed(2)),
+                    windowDays: ROLLING_WINDOW_DAYS,
+                    detectedAt: Date.now(),
+                });
+            }
+        }
 
-        anomalies.push({
-            id,
-            catId,
-            metric,
-            severity,
-            description,
-            changePercent,
-            currentAverage: Number(currentAvg.toFixed(2)),
-            previousAverage: Number(prevAvg.toFixed(2)),
-            windowDays: ROLLING_WINDOW_DAYS,
-            detectedAt: Date.now(),
-        });
+        // Single-day extreme outlier (works even with little history)
+        if (latestDay && latestDay[metric] >= absoluteHigh[metric]) {
+            const severity: 'warning' | 'critical' = metric === 'food' && latestDay[metric] >= absoluteHigh[metric] * 1.5 ? 'critical' : 'warning';
+            const description = `${metricLabels[metric]} unusually high on ${latestDay.date}: ${latestDay[metric].toFixed(1)} (threshold ${absoluteHigh[metric]}).`;
+            const id = `${catId}-${metric}-outlier-${latestDay.date || Date.now()}`;
+
+            // avoid duplicate outlier & spike for same metric/date
+            const alreadyExists = anomalies.some((a) => a.metric === metric && a.id === id);
+            if (!alreadyExists) {
+                anomalies.push({
+                    id,
+                    catId,
+                    metric,
+                    severity,
+                    description,
+                    changePercent: prevAvg ? changePercent : 0,
+                    currentAverage: Number(currentAvg.toFixed(2)),
+                    previousAverage: Number(prevAvg.toFixed(2)),
+                    windowDays: ROLLING_WINDOW_DAYS,
+                    detectedAt: Date.now(),
+                });
+            }
+        }
     });
 
     return anomalies;
