@@ -7,6 +7,7 @@ import WeightLogger from '../components/WeightLogger'
 import SymptomChecker from '../components/SymptomChecker'
 import DailySummary from '../components/DailySummary'
 import { startVoiceRecognition } from '../services/speech'
+import { synthesizeTts } from '../services/tts'
 import { parseHealthLogFromVoice } from '../services/gemini'
 import { HealthLog, Symptom, WeightLog, HealthAnomaly, Cat, Medication } from '../types'
 import { calculateDER, calculateRecommendedWater, estimateFoodCalories, WET_FOOD_WATER_RATIO } from '../utils/calorieCalculator'
@@ -431,8 +432,12 @@ function DashboardModern() {
 
   useEffect(() => {
     return () => {
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel()
+      if (summarySpeechRef.current) {
+        summarySpeechRef.current.pause()
+        summarySpeechRef.current.currentTime = 0
+      }
+      if (summarySpeechUrlRef.current) {
+        URL.revokeObjectURL(summarySpeechUrlRef.current)
       }
     }
   }, [])
@@ -493,7 +498,8 @@ function DashboardModern() {
     return visits.sort((a, b) => a.timestamp - b.timestamp)
   }, [selectedCat, getVetVisits])
   const displayedLogs = isDateFilterActive ? selectedDateLogs : catLogs
-  const summarySpeechRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const summarySpeechRef = useRef<HTMLAudioElement | null>(null)
+  const summarySpeechUrlRef = useRef<string | null>(null)
 
   const saveSettings = () => {
     localStorage.setItem('quickLogSettings', JSON.stringify(quickLogSettings))
@@ -565,31 +571,67 @@ function DashboardModern() {
     setCurrentMonth(new Date(target.getFullYear(), target.getMonth(), 1))
   }
 
-  const handleReadSummary = () => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      alert(lang === 'ko' ? '이 브라우저에서는 음성 안내를 지원하지 않습니다.' : 'Speech is not supported in this browser.')
-      return
+  const stopSummaryPlayback = () => {
+    if (summarySpeechRef.current) {
+      summarySpeechRef.current.pause()
+      summarySpeechRef.current.currentTime = 0
+      summarySpeechRef.current = null
     }
+    if (summarySpeechUrlRef.current) {
+      URL.revokeObjectURL(summarySpeechUrlRef.current)
+      summarySpeechUrlRef.current = null
+    }
+  }
+
+  const handleReadSummary = async () => {
     if (isReadingSummary) {
-      window.speechSynthesis.cancel()
+      stopSummaryPlayback()
       setIsReadingSummary(false)
       return
     }
+
     const sentences = [aiSummary.headline, aiSummary.subline ?? '', ...aiSummary.highlights.map((h) => h.text)]
-    const utterance = new SpeechSynthesisUtterance(sentences.filter(Boolean).join('. '))
-    utterance.lang = lang === 'ko' ? 'ko-KR' : 'en-US'
-    utterance.rate = 1
-    utterance.onend = () => {
-      setIsReadingSummary(false)
-      summarySpeechRef.current = null
+    const summaryText = sentences
+      .filter(Boolean)
+      .join('. ')
+      .trim()
+
+    if (!summaryText) {
+      alert(lang === 'ko' ? '읽을 요약이 없습니다.' : 'No summary to read yet.')
+      return
     }
-    utterance.onerror = () => {
-      setIsReadingSummary(false)
-      summarySpeechRef.current = null
-    }
-    summarySpeechRef.current = utterance
+
     setIsReadingSummary(true)
-    window.speechSynthesis.speak(utterance)
+    try {
+      stopSummaryPlayback()
+      const ttsBlob = await synthesizeTts(summaryText, lang === 'ko' ? 'ko' : 'en')
+      const url = URL.createObjectURL(ttsBlob)
+      summarySpeechUrlRef.current = url
+      const audio = new Audio(url)
+      summarySpeechRef.current = audio
+
+      audio.onended = () => {
+        stopSummaryPlayback()
+        setIsReadingSummary(false)
+      }
+      audio.onerror = () => {
+        stopSummaryPlayback()
+        setIsReadingSummary(false)
+        alert(lang === 'ko' ? 'TTS 재생 중 오류가 발생했습니다.' : 'TTS playback failed.')
+      }
+
+      await audio.play()
+    } catch (error) {
+      console.error('TTS failed', error)
+      stopSummaryPlayback()
+      setIsReadingSummary(false)
+      const message = error instanceof Error && error.message ? error.message : ''
+      alert(
+        lang === 'ko'
+          ? `음성 합성에 실패했습니다. ${message || '잠시 후 다시 시도해주세요.'}`
+          : `Could not synthesize speech. ${message || 'Please try again later.'}`
+      )
+    }
   }
 
   const quickLogMeal = () => {
