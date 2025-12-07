@@ -13,6 +13,7 @@ import path from 'path'
 
 const PORT = process.env.PORT || 8787
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+const HUGGING_FACE_API_KEY = process.env.HUGGING_FACE_API_KEY || process.env.HUGGINGFACE_API_KEY
 const STATE_FILE = process.env.STATE_FILE || path.join(path.dirname(new URL(import.meta.url).pathname), 'state.json')
 const STATE_WRITE_TOKEN = process.env.STATE_WRITE_TOKEN || ''
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -157,6 +158,39 @@ const handler = async (req, res) => {
         data?.candidates?.[0]?.output || ''
 
       return respond(res, 200, { text, raw: data })
+    }
+
+    if (req.url === '/api/tts' && req.method === 'POST') {
+      if (!HUGGING_FACE_API_KEY) {
+        return respond(res, 500, { error: 'Missing HUGGING_FACE_API_KEY env for TTS' })
+      }
+      const body = await parseJsonBody(req)
+      const { text, language = 'ko' } = body || {}
+      if (!text || typeof text !== 'string') {
+        return respond(res, 400, { error: 'text is required' })
+      }
+
+      const upstream = await fetch('https://api-inference.huggingface.co/models/microsoft/VibeVoice-Realtime-0.5B', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${HUGGING_FACE_API_KEY}`,
+          'Content-Type': 'application/json',
+          Accept: 'audio/wav',
+        },
+        body: JSON.stringify({
+          inputs: text,
+          parameters: { language },
+        }),
+      })
+
+      if (!upstream.ok) {
+        const details = await upstream.text()
+        return respond(res, upstream.status, { error: 'TTS upstream error', details })
+      }
+
+      const buffer = Buffer.from(await upstream.arrayBuffer())
+      const contentType = upstream.headers.get('content-type') || 'audio/wav'
+      return respond(res, 200, { audio: buffer.toString('base64'), contentType })
     }
 
     return respond(res, 404, { error: 'Not found' })
