@@ -7,6 +7,7 @@ import WeightLogger from '../components/WeightLogger'
 import SymptomChecker from '../components/SymptomChecker'
 import DailySummary from '../components/DailySummary'
 import { startVoiceRecognition } from '../services/speech'
+import { synthesizeGeminiTTS } from '../services/tts'
 import { parseHealthLogFromVoice } from '../services/gemini'
 import { HealthLog, Symptom, WeightLog, HealthAnomaly, Cat, Medication } from '../types'
 import { calculateDER, calculateRecommendedWater, estimateFoodCalories, WET_FOOD_WATER_RATIO } from '../utils/calorieCalculator'
@@ -431,8 +432,17 @@ function DashboardModern() {
 
   useEffect(() => {
     return () => {
+      if (summaryAudioRef.current) {
+        summaryAudioRef.current.pause()
+        summaryAudioRef.current.src = ''
+        summaryAudioRef.current = null
+      }
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel()
+      }
+      if (fallbackUtteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel()
+        fallbackUtteranceRef.current = null
       }
     }
   }, [])
@@ -493,7 +503,8 @@ function DashboardModern() {
     return visits.sort((a, b) => a.timestamp - b.timestamp)
   }, [selectedCat, getVetVisits])
   const displayedLogs = isDateFilterActive ? selectedDateLogs : catLogs
-  const summarySpeechRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const summaryAudioRef = useRef<HTMLAudioElement | null>(null)
+  const fallbackUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   const saveSettings = () => {
     localStorage.setItem('quickLogSettings', JSON.stringify(quickLogSettings))
@@ -565,31 +576,68 @@ function DashboardModern() {
     setCurrentMonth(new Date(target.getFullYear(), target.getMonth(), 1))
   }
 
-  const handleReadSummary = () => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      alert(lang === 'ko' ? '이 브라우저에서는 음성 안내를 지원하지 않습니다.' : 'Speech is not supported in this browser.')
-      return
+  const stopSummaryPlayback = () => {
+    if (summaryAudioRef.current) {
+      summaryAudioRef.current.pause()
+      summaryAudioRef.current.src = ''
+      summaryAudioRef.current = null
     }
-    if (isReadingSummary) {
+    if (fallbackUtteranceRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel()
-      setIsReadingSummary(false)
+      fallbackUtteranceRef.current = null
+    }
+    setIsReadingSummary(false)
+  }
+
+  const handleReadSummary = async () => {
+    const sentences = [aiSummary.headline, aiSummary.subline ?? '', ...aiSummary.highlights.map((h) => h.text)]
+    const textToRead = sentences.filter(Boolean).join('. ')
+
+    if (!textToRead.trim()) return
+
+    if (isReadingSummary) {
+      stopSummaryPlayback()
       return
     }
-    const sentences = [aiSummary.headline, aiSummary.subline ?? '', ...aiSummary.highlights.map((h) => h.text)]
-    const utterance = new SpeechSynthesisUtterance(sentences.filter(Boolean).join('. '))
-    utterance.lang = lang === 'ko' ? 'ko-KR' : 'en-US'
-    utterance.rate = 1
-    utterance.onend = () => {
-      setIsReadingSummary(false)
-      summarySpeechRef.current = null
-    }
-    utterance.onerror = () => {
-      setIsReadingSummary(false)
-      summarySpeechRef.current = null
-    }
-    summarySpeechRef.current = utterance
+
     setIsReadingSummary(true)
-    window.speechSynthesis.speak(utterance)
+
+    try {
+      const audioUrl = await synthesizeGeminiTTS(textToRead, lang === 'ko' ? 'ko' : 'en')
+      const audio = new Audio(audioUrl)
+      summaryAudioRef.current = audio
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl)
+        stopSummaryPlayback()
+      }
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl)
+        stopSummaryPlayback()
+      }
+      await audio.play()
+    } catch (err) {
+      console.error('Failed to play Gemini TTS', err)
+      stopSummaryPlayback()
+
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        const utterance = new SpeechSynthesisUtterance(textToRead)
+        utterance.lang = lang === 'ko' ? 'ko-KR' : 'en-US'
+        utterance.rate = 1
+        utterance.onend = () => {
+          stopSummaryPlayback()
+          fallbackUtteranceRef.current = null
+        }
+        utterance.onerror = () => {
+          stopSummaryPlayback()
+          fallbackUtteranceRef.current = null
+        }
+        fallbackUtteranceRef.current = utterance
+        setIsReadingSummary(true)
+        window.speechSynthesis.speak(utterance)
+      } else {
+        alert(lang === 'ko' ? '음성을 재생하지 못했습니다.' : 'Unable to play audio.')
+      }
+    }
   }
 
   const quickLogMeal = () => {
