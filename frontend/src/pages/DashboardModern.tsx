@@ -7,7 +7,7 @@ import WeightLogger from '../components/WeightLogger'
 import SymptomChecker from '../components/SymptomChecker'
 import DailySummary from '../components/DailySummary'
 import { startVoiceRecognition } from '../services/speech'
-import { parseHealthLogFromVoice } from '../services/gemini'
+import { parseHealthLogFromVoice, synthesizeSpeech } from '../services/gemini'
 import { HealthLog, Symptom, WeightLog, HealthAnomaly, Cat, Medication } from '../types'
 import { calculateDER, calculateRecommendedWater, estimateFoodCalories, WET_FOOD_WATER_RATIO } from '../utils/calorieCalculator'
 import { defaultMedications, loadMedicationsForCat, saveMedicationsForCat } from '../utils/medicationStorage'
@@ -272,7 +272,7 @@ const buildAiSummary = (
         : 'Health Summary'
       : lang === 'ko'
       ? `${cat.name} 맞춤 코칭`
-      : `Coaching for ${cat.name}`,
+      : 'Health Summary',
     highlights: highlights.slice(0, 4),
     mode: hasAlert ? 'alert' : 'default',
   }
@@ -434,6 +434,11 @@ function DashboardModern() {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel()
       }
+      if (summaryAudioRef.current) {
+        summaryAudioRef.current.pause()
+        summaryAudioRef.current = null
+      }
+      summarySpeechRef.current = null
     }
   }, [])
 
@@ -494,6 +499,7 @@ function DashboardModern() {
   }, [selectedCat, getVetVisits])
   const displayedLogs = isDateFilterActive ? selectedDateLogs : catLogs
   const summarySpeechRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const summaryAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const saveSettings = () => {
     localStorage.setItem('quickLogSettings', JSON.stringify(quickLogSettings))
@@ -565,18 +571,57 @@ function DashboardModern() {
     setCurrentMonth(new Date(target.getFullYear(), target.getMonth(), 1))
   }
 
-  const handleReadSummary = () => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      alert(lang === 'ko' ? '이 브라우저에서는 음성 안내를 지원하지 않습니다.' : 'Speech is not supported in this browser.')
+  const stopSummaryPlayback = () => {
+    if (summaryAudioRef.current) {
+      summaryAudioRef.current.pause()
+      summaryAudioRef.current = null
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
+    summarySpeechRef.current = null
+    setIsReadingSummary(false)
+  }
+
+  const handleReadSummary = async () => {
+    if (isReadingSummary) {
+      stopSummaryPlayback()
       return
     }
-    if (isReadingSummary) {
-      window.speechSynthesis.cancel()
+
+    const sentences = [aiSummary.headline, aiSummary.subline ?? '', ...aiSummary.highlights.map((h) => h.text)]
+    const textToRead = sentences.filter(Boolean).join('. ').trim()
+    if (!textToRead) return
+
+    setIsReadingSummary(true)
+
+    try {
+      const audioUrl = await synthesizeSpeech(textToRead, lang)
+      if (audioUrl) {
+        const audio = new Audio(audioUrl)
+        summaryAudioRef.current = audio
+        audio.onended = () => {
+          summaryAudioRef.current = null
+          setIsReadingSummary(false)
+        }
+        audio.onerror = () => {
+          summaryAudioRef.current = null
+          setIsReadingSummary(false)
+        }
+        await audio.play()
+        return
+      }
+    } catch (error) {
+      console.error('Gemini TTS failed, falling back to browser speech.', error)
+    }
+
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      alert(lang === 'ko' ? '이 브라우저에서는 음성 안내를 지원하지 않습니다.' : 'Speech is not supported in this browser.')
       setIsReadingSummary(false)
       return
     }
-    const sentences = [aiSummary.headline, aiSummary.subline ?? '', ...aiSummary.highlights.map((h) => h.text)]
-    const utterance = new SpeechSynthesisUtterance(sentences.filter(Boolean).join('. '))
+
+    const utterance = new SpeechSynthesisUtterance(textToRead)
     utterance.lang = lang === 'ko' ? 'ko-KR' : 'en-US'
     utterance.rate = 1
     utterance.onend = () => {
@@ -588,7 +633,6 @@ function DashboardModern() {
       summarySpeechRef.current = null
     }
     summarySpeechRef.current = utterance
-    setIsReadingSummary(true)
     window.speechSynthesis.speak(utterance)
   }
 
@@ -1595,6 +1639,9 @@ function DashboardModern() {
             if (log.snackAmount) parts.push(`${t('nutrition.foodLabels.treat')} ${log.snackAmount}g`)
             if (log.waterAmount) parts.push(`${t('nutrition.statLabels.water')} ${log.waterAmount}ml`)
             if (log.litterCount) parts.push(`${t('healthLog.litter')} ${log.litterCount}`)
+            if (log.type === 'weight' && typeof log.weight === 'number') {
+              parts.push(`${t('catProfile.weight')}: ${log.weight}kg`)
+            }
             if (log.playDurationMinutes) {
               const playLabel =
                 log.playType === 'catWheel'

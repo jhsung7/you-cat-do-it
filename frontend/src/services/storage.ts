@@ -158,6 +158,8 @@ export const weightLogStorage = {
     const logs = this.getAll().filter(log => log.id !== id);
     persist(WEIGHT_LOGS_KEY, logs);
     console.log('✅ Weight log deleted:', id);
+    // Remove mirrored health log (if any) to keep calendar clean
+    healthLogStorage.delete(id);
   },
 };
 

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { HealthLog, Symptom, WeightLog, VetVisit, Prescription, MoodLog, HealthAnomaly } from '../types';
 import { healthLogStorage, symptomStorage, weightLogStorage, vetVisitStorage, prescriptionStorage, moodLogStorage } from '../services/storage';
+import { useCatStore } from './catStore';
 
 const ROLLING_WINDOW_DAYS = 7;
 const TOTAL_WINDOW_DAYS = ROLLING_WINDOW_DAYS * 2;
@@ -267,8 +268,53 @@ export const useHealthStore = create<HealthStore>((set, get) => {
     },
 
     addWeightLog: (log) => {
-        weightLogStorage.add(log);
-        set({ weightLogs: [...get().weightLogs, log] });
+        if (!log.catId) {
+            console.warn('Weight log missing catId; skipping save.', log);
+            return;
+        }
+
+        const timestamp = log.timestamp ?? new Date(`${log.date}T12:00:00`).getTime();
+        const date = log.date || new Date(timestamp).toISOString().split('T')[0];
+        const normalized: WeightLog = { ...log, timestamp, date };
+
+        // Persist weight log
+        weightLogStorage.add(normalized);
+        set({
+            weightLogs: [
+                ...get().weightLogs.filter((existing) => existing.id !== normalized.id),
+                normalized,
+            ],
+        });
+
+        // Mirror into health logs so calendar/feed show the entry
+        const weightHealthLog: HealthLog = {
+            id: normalized.id,
+            catId: normalized.catId,
+            date,
+            time: new Date(timestamp).toTimeString().slice(0, 5),
+            timestamp,
+            type: 'weight',
+            weight: normalized.weight,
+            notes: normalized.notes,
+        };
+
+        const existingHealthLogs = get().healthLogs;
+        const exists = existingHealthLogs.some((entry) => entry.id === weightHealthLog.id);
+        if (exists) {
+            healthLogStorage.update(weightHealthLog.id, weightHealthLog);
+            set({
+                healthLogs: existingHealthLogs.map((entry) =>
+                    entry.id === weightHealthLog.id ? { ...entry, ...weightHealthLog } : entry
+                ),
+            });
+        } else {
+            healthLogStorage.add(weightHealthLog);
+            set({ healthLogs: [...existingHealthLogs, weightHealthLog] });
+        }
+
+        // Keep cat profile weight in sync
+        useCatStore.getState().updateCat(normalized.catId, { weight: normalized.weight });
+        recalcAnomaliesForCat(normalized.catId);
     },
 
     getWeightLogs: (catId) => {

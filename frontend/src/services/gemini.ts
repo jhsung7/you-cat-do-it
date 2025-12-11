@@ -83,6 +83,46 @@ const generateText = async (prompt: string, modelName = MODEL_NAME, onStreamUpda
   return result.response.text().trim();
 };
 
+export const synthesizeSpeech = async (text: string, language: 'ko' | 'en' = 'ko'): Promise<string | null> => {
+  const targetModel = MODEL_NAME;
+  const payload = { prompt: text, model: targetModel, responseMimeType: 'audio/mp3', language };
+
+  try {
+    if (proxyUrl) {
+      const res = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        throw new Error(`Proxy TTS failed: ${res.status}`);
+      }
+      const data = await res.json();
+      const inlineAudio =
+        data?.audio ||
+        data?.audioBase64 ||
+        data?.candidates?.[0]?.content?.parts?.find((p: any) => p?.inlineData)?.inlineData?.data;
+      if (inlineAudio) {
+        return `data:audio/mp3;base64,${inlineAudio}`;
+      }
+      return null;
+    }
+
+    if (!genAI) return null;
+    const model = genAI.getGenerativeModel({
+      model: targetModel,
+      generationConfig: { responseMimeType: 'audio/mp3' },
+    });
+    const result = await model.generateContent([{ text }]);
+    const inlineAudio =
+      result.response?.candidates?.[0]?.content?.parts?.find((part: any) => part?.inlineData)?.inlineData?.data;
+    return inlineAudio ? `data:audio/mp3;base64,${inlineAudio}` : null;
+  } catch (err) {
+    console.error('Failed to synthesize speech', err);
+    return null;
+  }
+};
+
 const embedText = async (text: string): Promise<Embedding | null> => {
   if (!genAI) return null;
   try {

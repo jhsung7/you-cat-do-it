@@ -13,6 +13,7 @@ export interface HealthLog {
     snackAmount?: number; // 간식 (g)
     snackType?: string; // 간식 종류 (선택)
     snackCaloriesPer100g?: number; // 간식 kcal/100g (로그 시점 기준)
+    weight?: number; // 체중 (kg) - 체중 기록용
 
     waterAmount?: number; // 물 섭취량 (ml)
     litterCount?: number; // 배변 횟수

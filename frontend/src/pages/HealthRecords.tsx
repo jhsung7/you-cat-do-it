@@ -29,6 +29,7 @@ function HealthRecords() {
     vetVisits,
     addVetVisit,
     deleteVetVisit,
+    loadHealthLogs,
   } = useHealthStore()
 
   const [medications, setMedications] = useState<Medication[]>(defaultMedications)
@@ -54,6 +55,7 @@ function HealthRecords() {
     if (selectedCat) {
       loadSymptoms(selectedCat.id)
       loadVetVisits(selectedCat.id)
+      loadHealthLogs(selectedCat.id)
       const loaded = loadMedicationsForCat(selectedCat.id)
       setMedications(loaded)
       medicationsLoadedRef.current = true
@@ -71,7 +73,7 @@ function HealthRecords() {
 
   const catSymptoms = selectedCat ? symptoms : []
   const storeAnomalies = useHealthStore((state) => (selectedCat ? state.anomaliesByCat[selectedCat.id] : undefined))
-  const anomalies: HealthAnomaly[] = storeAnomalies || []
+  const anomalies: HealthAnomaly[] = (storeAnomalies || []).slice().sort((a, b) => (b.detectedAt || 0) - (a.detectedAt || 0))
   const sortedVisits = [...vetVisits].sort((a, b) => a.timestamp - b.timestamp)
   const noMedicationText = t('medicationsPage.none', {
     defaultValue: i18n.language === 'ko' ? '등록된 약이 없습니다.' : 'No medications yet.',
