@@ -84,43 +84,62 @@ const generateText = async (prompt: string, modelName = MODEL_NAME, onStreamUpda
 };
 
 export const synthesizeSpeech = async (text: string, language: 'ko' | 'en' = 'ko'): Promise<string | null> => {
-  const targetModel = MODEL_NAME;
-  const payload = { prompt: text, model: targetModel, responseMimeType: 'audio/mp3', language };
+  const targetModel = TTS_MODEL_NAME;
 
-  try {
-    if (proxyUrl) {
-      const res = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+  const requestTts = async (voiceName?: string): Promise<string | null> => {
+    if (import.meta.env.DEV) {
+      console.info('[TTS] requesting', { model: targetModel, voiceName, language });
+    }
+    const payload: Record<string, any> = {
+      prompt: text,
+      model: targetModel,
+      responseMimeType: 'audio/mp3',
+      language,
+    };
+    if (voiceName) payload.voiceName = voiceName;
+
+    try {
+      if (proxyUrl) {
+        const res = await fetch(proxyUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          throw new Error(`Proxy TTS failed: ${res.status}`);
+        }
+        const data = await res.json();
+        const inlineAudio =
+          data?.audio ||
+          data?.audioBase64 ||
+          data?.candidates?.[0]?.content?.parts?.find((p: any) => p?.inlineData)?.inlineData?.data;
+        if (inlineAudio) {
+          return `data:audio/mp3;base64,${inlineAudio}`;
+        }
+        return null;
+      }
+
+      if (!genAI) return null;
+      const model = genAI.getGenerativeModel({
+        model: targetModel,
+        generationConfig: {
+          responseMimeType: 'audio/mp3',
+          ...(voiceName ? { voiceConfig: { voiceName } } : {}),
+        },
       });
-      if (!res.ok) {
-        throw new Error(`Proxy TTS failed: ${res.status}`);
-      }
-      const data = await res.json();
+      const result = await model.generateContent([{ text }]);
       const inlineAudio =
-        data?.audio ||
-        data?.audioBase64 ||
-        data?.candidates?.[0]?.content?.parts?.find((p: any) => p?.inlineData)?.inlineData?.data;
-      if (inlineAudio) {
-        return `data:audio/mp3;base64,${inlineAudio}`;
-      }
+        result.response?.candidates?.[0]?.content?.parts?.find((part: any) => part?.inlineData)?.inlineData?.data;
+      return inlineAudio ? `data:audio/mp3;base64,${inlineAudio}` : null;
+    } catch (err) {
+      console.error(`Failed to synthesize speech (voice=${voiceName || 'default'})`, err);
       return null;
     }
+  };
 
-    if (!genAI) return null;
-    const model = genAI.getGenerativeModel({
-      model: targetModel,
-      generationConfig: { responseMimeType: 'audio/mp3' },
-    });
-    const result = await model.generateContent([{ text }]);
-    const inlineAudio =
-      result.response?.candidates?.[0]?.content?.parts?.find((part: any) => part?.inlineData)?.inlineData?.data;
-    return inlineAudio ? `data:audio/mp3;base64,${inlineAudio}` : null;
-  } catch (err) {
-    console.error('Failed to synthesize speech', err);
-    return null;
-  }
+  const withPreferredVoice = await requestTts(TTS_VOICE_NAME);
+  if (withPreferredVoice) return withPreferredVoice;
+  return requestTts(undefined);
 };
 
 const embedText = async (text: string): Promise<Embedding | null> => {
@@ -183,6 +202,8 @@ const getRelevantKnowledgeSmart = async (query: string, language: 'ko' | 'en', t
 };
 
 const MODEL_NAME = 'gemini-2.5-flash';
+const TTS_MODEL_NAME = import.meta.env.VITE_GEMINI_TTS_MODEL || 'gemini-2.5-flash-preview-tts';
+const TTS_VOICE_NAME = import.meta.env.VITE_GEMINI_TTS_VOICE || 'Callirrhoe';
 const RECENT_MESSAGE_LIMIT = 10;
 
 // Helper: Summarize old conversations to manage context
